@@ -25,7 +25,7 @@ func loadFixture(t *testing.T, name string) []byte {
 
 func TestFetchIssueList(t *testing.T) {
 	r := backend.NewFakeRunner()
-	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = PROJ", "--paginate", "50:0")
+	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = PROJ", "--paginate", "0:50")
 
 	issues, total, err := backend.FetchIssueList(r, "project = PROJ", 50)
 	if err != nil {

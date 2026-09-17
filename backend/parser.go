@@ -12,7 +12,7 @@ import (
 func FetchIssueList(r Runner, jql string, maxResults int) ([]model.Issue, int, error) {
 	args := []string{"issue", "list", "--raw", "-q", jql}
 	if maxResults > 0 {
-		args = append(args, "--paginate", fmt.Sprintf("%d:0", maxResults))
+		args = append(args, "--paginate", fmt.Sprintf("0:%d", maxResults))
 	}
 	data, err := r.Run(args...)
 	if err != nil {
@@ -24,7 +24,7 @@ func FetchIssueList(r Runner, jql string, maxResults int) ([]model.Issue, int, e
 // FetchIssueListPage fetches a page of issues starting at startAt.
 func FetchIssueListPage(r Runner, jql string, maxResults, startAt int) ([]model.Issue, int, error) {
 	args := []string{"issue", "list", "--raw", "-q", jql,
-		"--paginate", fmt.Sprintf("%d:%d", maxResults, startAt)}
+		"--paginate", fmt.Sprintf("%d:%d", startAt, maxResults)}
 	data, err := r.Run(args...)
 	if err != nil {
 		return nil, 0, err

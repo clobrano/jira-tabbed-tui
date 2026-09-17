@@ -19,7 +19,7 @@ func runCmd(cmd tea.Cmd) tea.Msg {
 
 func TestCacheTTLNotExpired(t *testing.T) {
 	r := backend.NewFakeRunner()
-	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = A", "--paginate", "50:0")
+	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = A", "--paginate", "0:50")
 
 	c := backend.NewCache()
 
@@ -52,7 +52,7 @@ func TestCacheTTLNotExpired(t *testing.T) {
 
 func TestCacheTTLExpired(t *testing.T) {
 	r := backend.NewFakeRunner()
-	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = B", "--paginate", "50:0")
+	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = B", "--paginate", "0:50")
 
 	c := backend.NewCacheWithTTL(1 * time.Millisecond)
 
@@ -64,7 +64,7 @@ func TestCacheTTLExpired(t *testing.T) {
 
 	// Register an error to confirm a real fetch is attempted after TTL.
 	rFail := backend.NewFakeRunner()
-	rFail.RegisterError(errors.New("network gone"), "issue", "list", "--raw", "-q", "project = B", "--paginate", "50:0")
+	rFail.RegisterError(errors.New("network gone"), "issue", "list", "--raw", "-q", "project = B", "--paginate", "0:50")
 
 	msg := runCmd(c.FetchListCmd(rFail, 0, "tabB", "project = B"))
 	lm, ok := msg.(backend.ListFetchedMsg)
@@ -81,7 +81,7 @@ func TestCacheTTLExpired(t *testing.T) {
 
 func TestCacheInvalidate(t *testing.T) {
 	r := backend.NewFakeRunner()
-	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = C", "--paginate", "50:0")
+	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = C", "--paginate", "0:50")
 	r.Register(loadFixture(t, "detail.json"), "issue", "view", "PROJ-123", "--raw")
 
 	c := backend.NewCache()
@@ -110,7 +110,7 @@ func TestCacheInvalidate(t *testing.T) {
 
 func TestCacheForceRefreshBypassesTTL(t *testing.T) {
 	r := backend.NewFakeRunner()
-	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = D", "--paginate", "50:0")
+	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = D", "--paginate", "0:50")
 
 	c := backend.NewCache()
 
@@ -119,7 +119,7 @@ func TestCacheForceRefreshBypassesTTL(t *testing.T) {
 
 	// Force refresh should bypass TTL and attempt a real fetch.
 	rFail := backend.NewFakeRunner()
-	rFail.RegisterError(errors.New("forced fail"), "issue", "list", "--raw", "-q", "project = D", "--paginate", "50:0")
+	rFail.RegisterError(errors.New("forced fail"), "issue", "list", "--raw", "-q", "project = D", "--paginate", "0:50")
 
 	msg := runCmd(c.ForceFetchListCmd(rFail, 0, "tabD", "project = D"))
 	lm := msg.(backend.ListFetchedMsg)
