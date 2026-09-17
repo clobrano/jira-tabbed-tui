@@ -55,14 +55,44 @@ func DefaultPath() string {
 	return filepath.Join(home, ".config", "jira-tui", "config.yaml")
 }
 
+// defaultConfigYAML is written to disk when no config file exists.
+const defaultConfigYAML = `backend:
+  cli: jira
+  # extra_args: []
+
+tabs:
+  - name: Assigned
+    jql: assignee = currentUser()
+  - name: In Progress
+    jql: assignee = currentUser() AND status = "In Progress"
+
+detail:
+  sidebar_width: 33
+  sidebar_fields:
+    - field: assignee
+    - field: reporter
+    - field: labels
+    - field: duedate
+      label: Due
+`
+
 // Load reads and validates a config file at path.
+// If the file does not exist it is created with sane defaults.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return Config{}, fmt.Errorf("config file not found: %s", path)
+		if !errors.Is(err, os.ErrNotExist) {
+			return Config{}, fmt.Errorf("reading config: %w", err)
 		}
-		return Config{}, fmt.Errorf("reading config: %w", err)
+		// Create the file (and any parent directories) with defaults.
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return Config{}, fmt.Errorf("creating config directory: %w", err)
+		}
+		if err := os.WriteFile(path, []byte(defaultConfigYAML), 0644); err != nil {
+			return Config{}, fmt.Errorf("writing default config to %s: %w", path, err)
+		}
+		fmt.Fprintf(os.Stderr, "Created default config: %s\n", path)
+		data = []byte(defaultConfigYAML)
 	}
 
 	var cfg Config

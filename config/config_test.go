@@ -54,9 +54,21 @@ detail:
 }
 
 func TestLoadMissingFile(t *testing.T) {
-	_, err := config.Load("/nonexistent/path/config.yaml")
-	if err == nil {
-		t.Fatal("expected error for missing file, got nil")
+	// When the file does not exist, Load should create it with defaults.
+	path := filepath.Join(t.TempDir(), "subdir", "config.yaml")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("expected default config to be created, got error: %v", err)
+	}
+	if cfg.Backend.CLI != "jira" {
+		t.Errorf("expected default cli=jira, got %q", cfg.Backend.CLI)
+	}
+	if len(cfg.Tabs) == 0 {
+		t.Error("expected default tabs to be populated")
+	}
+	// File should now exist on disk.
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("expected config file to be created at %s: %v", path, err)
 	}
 }
 
