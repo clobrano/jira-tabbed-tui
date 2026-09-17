@@ -69,8 +69,10 @@ func (h HelpOverlay) View() string {
 	nav := []binding{
 		{"j / ↓", "Move down"},
 		{"k / ↑", "Move up"},
-		{"Tab / Shift-Tab", "Next / prev tab"},
+		{"Tab / ← →", "Next / prev tab"},
 		{"0–9", "Jump to tab by index"},
+		{"+", "Add new tab"},
+		{"-", "Delete current tab"},
 		{"Enter", "Open issue detail"},
 		{h.kb.ForceRefresh, "Refresh current tab"},
 		{h.kb.Help + " / Esc", "Close this overlay"},

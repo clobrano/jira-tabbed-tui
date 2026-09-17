@@ -25,12 +25,14 @@ const (
 type overlayMode int
 
 const (
-	overlayNone       overlayMode = iota
-	overlayTransition overlayMode = iota
-	overlayLabels     overlayMode = iota
-	overlayComment    overlayMode = iota
-	overlayHelp       overlayMode = iota
-	overlayFields     overlayMode = iota
+	overlayNone          overlayMode = iota
+	overlayTransition    overlayMode = iota
+	overlayLabels        overlayMode = iota
+	overlayComment       overlayMode = iota
+	overlayHelp          overlayMode = iota
+	overlayFields        overlayMode = iota
+	overlayAddTab        overlayMode = iota
+	overlayConfirmDelete overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -50,29 +52,32 @@ type FieldsOverlayMsg struct {
 
 // App is the root Bubbletea model.
 type App struct {
-	cfg         config.Config
-	runner      backend.Runner
-	cache       *backend.Cache
-	tabs        []tabState
-	activeTab   int
-	view        viewMode
-	overlay     overlayMode
-	detail      Detail
-	transition  actions.TransitionModel
-	labels      actions.LabelsModel
-	comment     actions.CommentModel
-	help        HelpOverlay
-	statusLine  StatusLine
-	tabBar      TabBar
-	fields      []model.Field
-	fieldScroll int
-	width       int
-	height      int
+	cfg          config.Config
+	configPath   string
+	runner       backend.Runner
+	cache        *backend.Cache
+	tabs         []tabState
+	activeTab    int
+	view         viewMode
+	overlay      overlayMode
+	detail       Detail
+	transition   actions.TransitionModel
+	labels       actions.LabelsModel
+	comment      actions.CommentModel
+	addTabM      actions.AddTabModel
+	deleteTabIdx int // tab index pending confirmation
+	help         HelpOverlay
+	statusLine   StatusLine
+	tabBar       TabBar
+	fields       []model.Field
+	fieldScroll  int
+	width        int
+	height       int
 	globalSpinner spinner.Model
 }
 
 // New creates the root App model.
-func New(cfg config.Config, runner backend.Runner) App {
+func New(cfg config.Config, configPath string, runner backend.Runner) App {
 	cache := backend.NewCache()
 
 	// Build tab states: index 0 = Search, then config tabs.
@@ -109,6 +114,7 @@ func New(cfg config.Config, runner backend.Runner) App {
 
 	return App{
 		cfg:           cfg,
+		configPath:    configPath,
 		runner:        runner,
 		cache:         cache,
 		tabs:          tabs,
@@ -254,6 +260,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.overlay = overlayNone
 		return a, nil
 
+	case actions.AddTabSubmittedMsg:
+		return a.applyAddTab(msg)
+
+	case actions.AddTabCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
 	// ── keyboard ─────────────────────────────────────────────────────────────
 	case tea.KeyMsg:
 		return a.handleKey(msg)
@@ -364,6 +377,19 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if n < len(a.tabs) {
 			return a.switchToTab(n)
 		}
+
+	case "+":
+		a.addTabM = actions.NewAddTabModel().SetSize(a.width, a.height)
+		a.overlay = overlayAddTab
+		return a, nil
+
+	case "-":
+		// Cannot delete the Search tab.
+		if a.activeTab > 0 {
+			a.deleteTabIdx = a.activeTab
+			a.overlay = overlayConfirmDelete
+			return a, nil
+		}
 	}
 	return a, nil
 }
@@ -458,6 +484,22 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return a, nil
+
+	case overlayAddTab:
+		var cmd tea.Cmd
+		a.addTabM, cmd = a.addTabM.Update(msg)
+		return a, cmd
+
+	case overlayConfirmDelete:
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "y", "Y":
+				return a.applyDeleteTab(a.deleteTabIdx)
+			default:
+				a.overlay = overlayNone
+			}
+		}
+		return a, nil
 	}
 	return a, nil
 }
@@ -489,6 +531,10 @@ func (a App) View() string {
 		return a.comment.View()
 	case overlayFields:
 		return a.fieldsOverlayView()
+	case overlayAddTab:
+		return a.addTabM.View()
+	case overlayConfirmDelete:
+		return a.confirmDeleteView()
 	}
 
 	return base
@@ -615,6 +661,117 @@ func (a App) currentTabName() string {
 	return ""
 }
 
+// applyAddTab adds the new tab to in-memory state, saves config, and fetches.
+func (a App) applyAddTab(msg actions.AddTabSubmittedMsg) (tea.Model, tea.Cmd) {
+	a.overlay = overlayNone
+
+	newTab := tabState{
+		name: msg.Name,
+		jql:  msg.JQL,
+		list: NewIssueList().SetLoading(true),
+	}
+	a.tabs = append(a.tabs, newTab)
+
+	// Update tab bar names.
+	names := make([]string, len(a.tabs))
+	for i, t := range a.tabs {
+		names[i] = t.name
+	}
+	a.tabBar = NewTabBar(names)
+
+	// Persist to config.
+	a.cfg.Tabs = append(a.cfg.Tabs, config.Tab{Name: msg.Name, JQL: msg.JQL})
+	if err := config.Save(a.configPath, a.cfg); err != nil {
+		a.statusLine = a.statusLine.SetMessage("tab added (config save failed: "+err.Error()+")", true)
+	} else {
+		a.statusLine = a.statusLine.SetMessage("tab "+msg.Name+" added and saved", false)
+	}
+
+	newIdx := len(a.tabs) - 1
+	a.activeTab = newIdx
+	return a, a.cache.ForceFetchListCmd(a.runner, newIdx, msg.Name, msg.JQL)
+}
+
+// applyDeleteTab removes a tab, saves config, and switches to an adjacent tab.
+func (a App) applyDeleteTab(idx int) (tea.Model, tea.Cmd) {
+	a.overlay = overlayNone
+	if idx <= 0 || idx >= len(a.tabs) {
+		return a, nil
+	}
+
+	tabName := a.tabs[idx].name
+
+	// Remove from runtime state.
+	a.tabs = append(a.tabs[:idx], a.tabs[idx+1:]...)
+
+	// Remove from config (config index = runtime index - 1, since tab 0 is Search).
+	cfgIdx := idx - 1
+	if cfgIdx >= 0 && cfgIdx < len(a.cfg.Tabs) {
+		a.cfg.Tabs = append(a.cfg.Tabs[:cfgIdx], a.cfg.Tabs[cfgIdx+1:]...)
+	}
+
+	// Update tab bar.
+	names := make([]string, len(a.tabs))
+	for i, t := range a.tabs {
+		names[i] = t.name
+	}
+	a.tabBar = NewTabBar(names)
+
+	// Persist.
+	if err := config.Save(a.configPath, a.cfg); err != nil {
+		a.statusLine = a.statusLine.SetMessage("tab removed (config save failed: "+err.Error()+")", true)
+	} else {
+		a.statusLine = a.statusLine.SetMessage("tab "+tabName+" removed", false)
+	}
+
+	// Switch to adjacent tab.
+	a.activeTab = idx
+	if a.activeTab >= len(a.tabs) {
+		a.activeTab = len(a.tabs) - 1
+	}
+	if a.activeTab < 0 {
+		a.activeTab = 0
+	}
+
+	// Fetch the newly active tab if it's not Search.
+	if !a.tabs[a.activeTab].isSearch {
+		t := a.tabs[a.activeTab]
+		a.tabs[a.activeTab].list = t.list.SetLoading(true)
+		return a, a.cache.ForceFetchListCmd(a.runner, a.activeTab, t.name, t.jql)
+	}
+	return a, nil
+}
+
+// confirmDeleteView renders the "are you sure?" overlay.
+func (a App) confirmDeleteView() string {
+	if a.deleteTabIdx <= 0 || a.deleteTabIdx >= len(a.tabs) {
+		return ""
+	}
+	tabName := a.tabs[a.deleteTabIdx].name
+
+	overlayW := 52
+	if overlayW > a.width-4 {
+		overlayW = a.width - 4
+	}
+
+	title := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff4444")).Bold(true).
+		Render("Delete Tab")
+	msg := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).
+		Render(fmt.Sprintf("Delete tab %q?", tabName))
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).
+		Render("Press y to confirm, any other key to cancel")
+
+	content := title + "\n\n" + msg + "\n\n" + hint
+	overlay := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#ff4444")).
+		Padding(1, 2).
+		Background(lipgloss.Color("#111111")).
+		Width(overlayW).Render(content)
+
+	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
+}
+
 func (a App) openBrowserCmd() tea.Cmd {
 	key := a.detail.IssueKey()
 	return func() tea.Msg {
@@ -646,6 +803,8 @@ func (a App) resizeAll() App {
 		a.labels = a.labels.SetSize(a.width, a.height)
 	case overlayComment:
 		a.comment = a.comment.SetSize(a.width, a.height)
+	case overlayAddTab:
+		a.addTabM = a.addTabM.SetSize(a.width, a.height)
 	}
 	for i := range a.tabs {
 		if a.tabs[i].isSearch {

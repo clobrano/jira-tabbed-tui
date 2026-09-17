@@ -46,6 +46,18 @@ type Config struct {
 	Keybindings Keybindings `yaml:"keybindings"`
 }
 
+// Save writes cfg back to path in YAML format.
+func Save(path string, cfg Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
 // DefaultPath returns the default config file path.
 func DefaultPath() string {
 	home, err := os.UserHomeDir()

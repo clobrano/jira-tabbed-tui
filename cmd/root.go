@@ -44,7 +44,7 @@ var rootCmd = &cobra.Command{
 				"Run `%s auth login` to authenticate.", cfg.Backend.CLI, err, cfg.Backend.CLI)
 		}
 
-		app := tui.New(cfg, runner)
+		app := tui.New(cfg, configPath, runner)
 
 		p := tea.NewProgram(app,
 			tea.WithAltScreen(),
