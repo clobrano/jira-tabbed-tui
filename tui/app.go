@@ -349,10 +349,10 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, a.cache.FetchDetailCmd(a.runner, iss.Key)
 		}
 
-	case "tab":
+	case "tab", "right":
 		return a.switchTab(1)
 
-	case "shift+tab":
+	case "shift+tab", "left":
 		return a.switchTab(-1)
 
 	case a.cfg.Keybindings.ForceRefresh:
