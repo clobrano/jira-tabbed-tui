@@ -631,11 +631,17 @@ func (a App) openBrowserCmd() tea.Cmd {
 func (a App) resizeAll() App {
 	a.tabBar = a.tabBar.SetWidth(a.width)
 	a.help = a.help.SetSize(a.width, a.height)
-	a.transition = a.transition.SetSize(a.width, a.height)
-	a.labels = a.labels.SetSize(a.width, a.height)
-	a.comment = a.comment.SetSize(a.width, a.height)
 	a.statusLine = a.statusLine.SetWidth(a.width)
-	// Resize search inputs.
+	// Only resize overlay sub-models that are currently active; the others
+	// hold a zero-value list/input model until first opened and would panic.
+	switch a.overlay {
+	case overlayTransition:
+		a.transition = a.transition.SetSize(a.width, a.height)
+	case overlayLabels:
+		a.labels = a.labels.SetSize(a.width, a.height)
+	case overlayComment:
+		a.comment = a.comment.SetSize(a.width, a.height)
+	}
 	for i := range a.tabs {
 		if a.tabs[i].isSearch {
 			a.tabs[i].search = a.tabs[i].search.SetWidth(a.width)
