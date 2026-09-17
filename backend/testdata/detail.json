@@ -1,0 +1,28 @@
+{
+  "key": "PROJ-123",
+  "fields": {
+    "summary": "Fix login authentication bug",
+    "description": "The login form breaks when the user enters special characters in the password field. Steps to reproduce:\n1. Go to /login\n2. Enter any username\n3. Enter a password with characters like & < > \"\n4. Click Login\n\nExpected: successful login\nActual: 500 error",
+    "issuetype": {"name": "Bug"},
+    "priority": {"name": "High"},
+    "duedate": "2026-10-01",
+    "status": {"name": "In Progress"},
+    "assignee": {"displayName": "Alice Smith"},
+    "reporter": {"displayName": "Bob Jones"},
+    "labels": ["auth", "bug", "regression"],
+    "comment": {
+      "comments": [
+        {
+          "author": {"displayName": "Bob Jones"},
+          "created": "2026-09-10T09:00:00.000+0000",
+          "body": "I can reproduce this on Chrome and Firefox."
+        },
+        {
+          "author": {"displayName": "Alice Smith"},
+          "created": "2026-09-12T14:30:00.000+0000",
+          "body": "Working on a fix now. The issue is in the HTML encoding middleware."
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "key": "PROJ-125",
+  "fields": {
+    "summary": "Story with custom fields",
+    "description": "This issue exercises custom Jira fields.",
+    "issuetype": {"name": "Story"},
+    "priority": {"name": "Low"},
+    "duedate": null,
+    "status": {"name": "To Do"},
+    "assignee": null,
+    "reporter": {"displayName": "Carol White"},
+    "labels": ["feature"],
+    "customfield_10020": "Sprint 5",
+    "customfield_10016": 8,
+    "customfield_10014": "PROJ-100",
+    "comment": {"comments": []}
+  }
+}

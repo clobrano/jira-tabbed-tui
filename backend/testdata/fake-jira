@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Fake Jira CLI for testing without a real Jira server.
+# Point backend.cli at this script in a local config.yaml for manual E2E runs.
+
+TESTDATA_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+CMD="${1:-}"
+SUBCMD="${2:-}"
+ACTION="${3:-}"
+
+case "$CMD" in
+  issue)
+    case "$SUBCMD" in
+      list)
+        cat "$TESTDATA_DIR/list.json"
+        ;;
+      view)
+        KEY="$3"
+        case "$KEY" in
+          PROJ-125) cat "$TESTDATA_DIR/custom_fields.json" ;;
+          *)        cat "$TESTDATA_DIR/detail.json" ;;
+        esac
+        ;;
+      transitions)
+        cat "$TESTDATA_DIR/transitions.json"
+        ;;
+      move)
+        echo '{"success": true}'
+        ;;
+      label)
+        if [[ "$ACTION" == "add" ]]; then
+          echo '{"success": true}'
+        else
+          echo "unknown label subcommand: $ACTION" >&2
+          exit 1
+        fi
+        ;;
+      comment)
+        if [[ "$ACTION" == "add" ]]; then
+          echo '{"success": true}'
+        else
+          echo "unknown comment subcommand: $ACTION" >&2
+          exit 1
+        fi
+        ;;
+      *)
+        echo "fake-jira: unknown issue subcommand: $SUBCMD" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  me)
+    echo '{"displayName": "Test User", "email": "test@example.com"}'
+    ;;
+  *)
+    echo "fake-jira: unknown command: $*" >&2
+    exit 1
+    ;;
+esac
