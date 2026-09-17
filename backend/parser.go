@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -76,12 +77,26 @@ type rawComment struct {
 }
 
 func parseIssueList(data []byte) ([]model.Issue, int, error) {
-	var resp listResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, 0, fmt.Errorf("parsing issue list: %w", err)
+	// jira-cli --raw can return either the Jira API wrapper object
+	// {"total":N,"issues":[...]} or a bare array [...].
+	trimmed := bytes.TrimSpace(data)
+	var rawIssues []rawIssue
+	total := 0
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		if err := json.Unmarshal(data, &rawIssues); err != nil {
+			return nil, 0, fmt.Errorf("parsing issue list (array): %w", err)
+		}
+		total = len(rawIssues)
+	} else {
+		var resp listResponse
+		if err := json.Unmarshal(data, &resp); err != nil {
+			return nil, 0, fmt.Errorf("parsing issue list: %w", err)
+		}
+		rawIssues = resp.Issues
+		total = resp.Total
 	}
-	issues := make([]model.Issue, 0, len(resp.Issues))
-	for _, raw := range resp.Issues {
+	issues := make([]model.Issue, 0, len(rawIssues))
+	for _, raw := range rawIssues {
 		var f rawIssueFields
 		if err := json.Unmarshal(raw.Fields, &f); err != nil {
 			continue
@@ -98,7 +113,7 @@ func parseIssueList(data []byte) ([]model.Issue, int, error) {
 		}
 		issues = append(issues, iss)
 	}
-	return issues, resp.Total, nil
+	return issues, total, nil
 }
 
 // FetchIssueDetail fetches full detail for one issue.

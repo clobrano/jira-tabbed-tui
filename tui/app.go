@@ -100,11 +100,19 @@ func New(cfg config.Config, runner backend.Runner) App {
 	gs.Spinner = spinner.Dot
 	gs.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#5555ff"))
 
+	// Start on the first non-search tab if one exists.
+	initialTab := 0
+	if len(tabs) > 1 {
+		initialTab = 1
+		tabs[1].list = tabs[1].list.SetLoading(true)
+	}
+
 	return App{
 		cfg:           cfg,
 		runner:        runner,
 		cache:         cache,
 		tabs:          tabs,
+		activeTab:     initialTab,
 		view:          viewList,
 		overlay:       overlayNone,
 		detail:        NewDetail(cfg),
@@ -118,12 +126,9 @@ func New(cfg config.Config, runner backend.Runner) App {
 // Init starts the spinner and triggers the initial fetch for the first non-search tab.
 func (a App) Init() tea.Cmd {
 	cmds := []tea.Cmd{a.globalSpinner.Tick}
-	// Fetch initial tab — if first tab is Search, try the second.
-	if len(a.tabs) > 1 {
-		a.tabs[1].list = a.tabs[1].list.SetLoading(true)
-		cmds = append(cmds, a.cache.FetchListCmd(a.runner, 1, a.tabs[1].name, a.tabs[1].jql))
-		// Set active tab to first non-search.
-		a.activeTab = 1
+	if a.activeTab > 0 && a.activeTab < len(a.tabs) {
+		t := a.tabs[a.activeTab]
+		cmds = append(cmds, a.cache.FetchListCmd(a.runner, a.activeTab, t.name, t.jql))
 	}
 	return tea.Batch(cmds...)
 }
@@ -345,10 +350,10 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "tab":
-		return a, a.switchTab(1)
+		return a.switchTab(1)
 
 	case "shift+tab":
-		return a, a.switchTab(-1)
+		return a.switchTab(-1)
 
 	case a.cfg.Keybindings.ForceRefresh:
 		tab.list = tab.list.SetLoading(true)
@@ -357,7 +362,7 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		n := int(msg.String()[0] - '0')
 		if n < len(a.tabs) {
-			return a, a.switchToTab(n)
+			return a.switchToTab(n)
 		}
 	}
 	return a, nil
@@ -578,7 +583,7 @@ func (a App) fieldsOverlayView() string {
 	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
 }
 
-func (a App) switchTab(dir int) tea.Cmd {
+func (a App) switchTab(dir int) (tea.Model, tea.Cmd) {
 	next := a.activeTab + dir
 	if next < 0 {
 		next = len(a.tabs) - 1
@@ -589,18 +594,18 @@ func (a App) switchTab(dir int) tea.Cmd {
 	return a.switchToTab(next)
 }
 
-func (a App) switchToTab(idx int) tea.Cmd {
+func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 	if idx < 0 || idx >= len(a.tabs) {
-		return nil
+		return a, nil
 	}
 	a.activeTab = idx
 	tab := a.tabs[idx]
 	if tab.isSearch {
 		a.tabs[idx].search = tab.search.Focus()
-		return nil
+		return a, nil
 	}
 	a.tabs[idx].list = tab.list.SetLoading(true)
-	return a.cache.ForceFetchListCmd(a.runner, idx, tab.name, tab.jql)
+	return a, a.cache.ForceFetchListCmd(a.runner, idx, tab.name, tab.jql)
 }
 
 func (a App) currentTabName() string {
