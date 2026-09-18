@@ -109,8 +109,18 @@ func fieldValue(detail model.IssueDetail, id string) string {
 	case []any:
 		parts := make([]string, 0, len(v))
 		for _, item := range v {
-			if s, ok := item.(string); ok {
-				parts = append(parts, s)
+			switch iv := item.(type) {
+			case string:
+				parts = append(parts, iv)
+			case map[string]any:
+				// Jira object arrays (components, fixVersions, versions, …)
+				// carry the human-readable label in one of these keys.
+				for _, key := range []string{"name", "displayName", "value", "key"} {
+					if s, ok := iv[key].(string); ok && s != "" {
+						parts = append(parts, s)
+						break
+					}
+				}
 			}
 		}
 		return strings.Join(parts, ", ")
