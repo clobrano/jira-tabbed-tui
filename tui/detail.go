@@ -270,7 +270,9 @@ func (d Detail) renderLinks(width int) string {
 
 	typeStyle := lipgloss.NewStyle().Width(typeW).Foreground(lipgloss.Color("#888888"))
 	keyStyle := lipgloss.NewStyle().Width(keyW).Foreground(lipgloss.Color("#5555ff")).Bold(true)
+	webKeyStyle := lipgloss.NewStyle().Width(keyW).Foreground(lipgloss.Color("#5588ff")).Underline(true)
 	summaryStyle := lipgloss.NewStyle().Width(summaryW).Foreground(lipgloss.Color("#dddddd"))
+	urlStyle := lipgloss.NewStyle().Width(summaryW).Foreground(lipgloss.Color("#5588ff")).Faint(true)
 	statusStyle := lipgloss.NewStyle().Width(statusW).Foreground(lipgloss.Color("#aaaaaa"))
 	cursorStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#222255")).
@@ -279,7 +281,7 @@ func (d Detail) renderLinks(width int) string {
 	hdrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
 
 	var sb strings.Builder
-	hdr := fmt.Sprintf("  %-*s  %-*s  %-*s  %s", typeW, "TYPE", keyW, "KEY", summaryW, "SUMMARY", "STATUS")
+	hdr := fmt.Sprintf("  %-*s  %-*s  %-*s  %s", typeW, "TYPE", keyW, "KEY / TITLE", summaryW, "SUMMARY / URL", "STATUS")
 	sb.WriteString(hdrStyle.Render(hdr) + "\n")
 	sepW := width - 2
 	if sepW < 0 {
@@ -309,6 +311,11 @@ func (d Detail) renderLinks(width int) string {
 		if i == d.linkCursor {
 			line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s", typeW, typ, keyW, key, summaryW, sum, statusW, status)
 			sb.WriteString(cursorStyle.Width(width - 2).Render(line) + "\n")
+		} else if link.URL != "" {
+			// Web link: title underlined, URL in faint blue
+			row := "  " + typeStyle.Render(typ) + "  " + webKeyStyle.Render(key) + "  " +
+				urlStyle.Render(sum) + "  " + statusStyle.Render(status)
+			sb.WriteString(row + "\n")
 		} else {
 			row := "  " + typeStyle.Render(typ) + "  " + keyStyle.Render(key) + "  " +
 				summaryStyle.Render(sum) + "  " + statusStyle.Render(status)

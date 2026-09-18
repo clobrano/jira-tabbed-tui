@@ -144,3 +144,60 @@ func SearchAssignableUsersREST(cfgURL, issueKey, query string) ([]model.User, er
 	}
 	return users, nil
 }
+
+// FetchRemoteLinksREST fetches web/remote links attached to an issue.
+func FetchRemoteLinksREST(cfgURL, key string) ([]model.IssueLink, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := baseURL + "/rest/api/3/issue/" + url.PathEscape(key) + "/remotelink"
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(email, token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching remote links: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jira API returned %d: %s", resp.StatusCode, body)
+	}
+
+	var raw []struct {
+		Relationship string `json:"relationship"`
+		Object       struct {
+			URL     string `json:"url"`
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		} `json:"object"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parsing remote links: %w", err)
+	}
+
+	links := make([]model.IssueLink, 0, len(raw))
+	for _, r := range raw {
+		rel := r.Relationship
+		if rel == "" {
+			rel = "web link"
+		}
+		links = append(links, model.IssueLink{
+			Type:    rel,
+			Key:     r.Object.Title,
+			Summary: r.Object.URL,
+			URL:     r.Object.URL,
+		})
+	}
+	return links, nil
+}

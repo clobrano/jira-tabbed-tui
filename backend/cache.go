@@ -38,6 +38,13 @@ type ChildrenFetchedMsg struct {
 	Err       error
 }
 
+// RemoteLinksFetchedMsg is sent when the remote/web links fetch completes.
+type RemoteLinksFetchedMsg struct {
+	IssueKey string
+	Links    []model.IssueLink
+	Err      error
+}
+
 // AssignSearchDoneMsg is sent when an assignable-user search completes.
 type AssignSearchDoneMsg struct {
 	Users []model.User
@@ -220,6 +227,14 @@ func AddCommentCmd(r Runner, key, body, tabName string) tea.Cmd {
 	return func() tea.Msg {
 		err := AddComment(r, key, body)
 		return WriteActionDoneMsg{Action: "add comment", IssueKey: key, TabName: tabName, Err: err}
+	}
+}
+
+// FetchRemoteLinksCmd fetches web/remote links for an issue via the Jira REST API.
+func FetchRemoteLinksCmd(cfgURL, key string) tea.Cmd {
+	return func() tea.Msg {
+		links, err := FetchRemoteLinksREST(cfgURL, key)
+		return RemoteLinksFetchedMsg{IssueKey: key, Links: links, Err: err}
 	}
 }
 

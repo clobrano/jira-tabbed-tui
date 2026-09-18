@@ -210,8 +210,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.detail = a.detail.SetIssue(msg.Issue)
 		a.statusLine = a.statusLine.SetMessage("", false)
-		// Jira Cloud stores children separately (parent = KEY); fetch them now.
-		return a, backend.FetchChildrenCmd(a.runner, msg.Issue.Key)
+		// Fetch children and web/remote links in parallel.
+		return a, tea.Batch(
+			backend.FetchChildrenCmd(a.runner, msg.Issue.Key),
+			backend.FetchRemoteLinksCmd(a.cfg.Backend.URL, msg.Issue.Key),
+		)
 
 	// ── children fetched ─────────────────────────────────────────────────────
 	case backend.ChildrenFetchedMsg:
@@ -226,6 +229,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			a.detail = a.detail.AppendLinks(links)
+		}
+		return a, nil
+
+	// ── remote/web links fetched ─────────────────────────────────────────────
+	case backend.RemoteLinksFetchedMsg:
+		if msg.Err == nil && len(msg.Links) > 0 && a.detail.IssueKey() == msg.IssueKey {
+			a.detail = a.detail.AppendLinks(msg.Links)
 		}
 		return a, nil
 
@@ -592,6 +602,9 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		if link, ok := a.detail.SelectedLink(); ok {
+			if link.URL != "" {
+				return a, a.openDirectURLCmd(link.URL)
+			}
 			a.detail = a.detail.SetLoading(true)
 			a = a.pushHistory(link.Key)
 			return a, a.cache.FetchDetailCmd(a.runner, link.Key)
@@ -1433,6 +1446,19 @@ func (a App) confirmDeleteView() string {
 		Width(overlayW).Render(content)
 
 	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
+}
+
+func (a App) openDirectURLCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		switch runtime.GOOS {
+		case "darwin":
+			err = exec.Command("open", url).Start()
+		default:
+			err = exec.Command("xdg-open", url).Start()
+		}
+		return browserOpenDoneMsg{err: err}
+	}
 }
 
 func (a App) openBrowserCmd(key string) tea.Cmd {
