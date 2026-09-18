@@ -68,7 +68,8 @@ type rawIssueFields struct {
 	Comment     *struct {
 		Comments []rawComment `json:"comments"`
 	} `json:"comment"`
-	IssueLinks []rawIssueLink `json:"issuelinks"`
+	IssueLinks []rawIssueLink   `json:"issuelinks"`
+	Subtasks   []rawLinkedIssue `json:"subtasks"`
 }
 
 type rawIssueLink struct {
@@ -210,6 +211,15 @@ func parseIssueDetail(data []byte) (model.IssueDetail, error) {
 		for i, j := 0, len(detail.Comments)-1; i < j; i, j = i+1, j-1 {
 			detail.Comments[i], detail.Comments[j] = detail.Comments[j], detail.Comments[i]
 		}
+	}
+
+	for _, sub := range f.Subtasks {
+		detail.Links = append(detail.Links, model.IssueLink{
+			Type:    "subtask",
+			Key:     sub.Key,
+			Summary: sub.Fields.Summary,
+			Status:  sub.Fields.Status.Name,
+		})
 	}
 
 	for _, link := range f.IssueLinks {

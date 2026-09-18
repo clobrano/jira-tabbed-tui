@@ -199,9 +199,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			a.detail = a.detail.SetError(msg.Err)
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
-		} else {
-			a.detail = a.detail.SetIssue(msg.Issue)
-			a.statusLine = a.statusLine.SetMessage("", false)
+			return a, nil
+		}
+		a.detail = a.detail.SetIssue(msg.Issue)
+		a.statusLine = a.statusLine.SetMessage("", false)
+		// Jira Cloud stores children separately (parent = KEY); fetch them now.
+		return a, backend.FetchChildrenCmd(a.runner, msg.Issue.Key)
+
+	// ── children fetched ─────────────────────────────────────────────────────
+	case backend.ChildrenFetchedMsg:
+		if msg.Err == nil && len(msg.Children) > 0 && a.detail.IssueKey() == msg.ParentKey {
+			links := make([]model.IssueLink, len(msg.Children))
+			for i, ch := range msg.Children {
+				links[i] = model.IssueLink{
+					Type:    "child issue",
+					Key:     ch.Key,
+					Summary: ch.Summary,
+					Status:  ch.Status,
+				}
+			}
+			a.detail = a.detail.AppendLinks(links)
 		}
 		return a, nil
 

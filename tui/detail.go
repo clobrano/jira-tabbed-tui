@@ -195,6 +195,13 @@ func (d Detail) Init() tea.Cmd {
 
 func (d Detail) IssueKey() string { return d.issue.Key }
 
+// AppendLinks adds links to the issue (used for async child-issue fetch).
+func (d Detail) AppendLinks(links []model.IssueLink) Detail {
+	d.issue.Links = append(d.issue.Links, links...)
+	d.vp.SetContent(d.bodyContent(d.vp.Width))
+	return d
+}
+
 // SelectedLink returns the highlighted link when the Links tab is active.
 func (d Detail) SelectedLink() (model.IssueLink, bool) {
 	if d.bodyTab != bodyTabLinks || d.linkCursor < 0 || d.linkCursor >= len(d.issue.Links) {

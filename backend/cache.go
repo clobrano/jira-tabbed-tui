@@ -31,6 +31,13 @@ type TransitionsFetchedMsg struct {
 	Err         error
 }
 
+// ChildrenFetchedMsg is sent when the parent = KEY child-issue fetch completes.
+type ChildrenFetchedMsg struct {
+	ParentKey string
+	Children  []model.Issue
+	Err       error
+}
+
 // WriteActionDoneMsg is sent after any write action (transition, labels, comment).
 type WriteActionDoneMsg struct {
 	Action  string
@@ -164,6 +171,16 @@ func (c *Cache) FetchDetailCmd(r Runner, key string) tea.Cmd {
 		c.mu.Unlock()
 
 		return DetailFetchedMsg{Issue: detail}
+	}
+}
+
+// FetchChildrenCmd fetches issues whose parent field equals key.
+// Jira Cloud's next-gen hierarchy doesn't expose children in the parent's fields;
+// they must be queried separately via JQL.
+func FetchChildrenCmd(r Runner, key string) tea.Cmd {
+	return func() tea.Msg {
+		issues, _, err := FetchIssueList(r, "parent = "+key, 200)
+		return ChildrenFetchedMsg{ParentKey: key, Children: issues, Err: err}
 	}
 }
 
