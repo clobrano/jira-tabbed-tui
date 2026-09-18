@@ -786,8 +786,10 @@ func (a App) filteredFields() []model.Field {
 	}
 	out := make([]model.Field, 0, len(a.fields))
 	for _, f := range a.fields {
+		val := strings.ToLower(fieldValue(a.detail.issue, f.ID))
 		if strings.Contains(strings.ToLower(f.DisplayName), q) ||
-			strings.Contains(strings.ToLower(f.ID), q) {
+			strings.Contains(strings.ToLower(f.ID), q) ||
+			strings.Contains(val, q) {
 			out = append(out, f)
 		}
 	}
