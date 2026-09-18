@@ -22,7 +22,7 @@ var (
 
 	helpKeyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#5555ff")).
-			Width(14).
+			Width(18).
 			Bold(true)
 
 	helpDescStyle = lipgloss.NewStyle().
@@ -84,19 +84,29 @@ func (h HelpOverlay) View() string {
 
 	if h.inDetail {
 		detail := []binding{
-			{"Esc", "Back to list"},
-			{"← / →", "Switch Description / Comments"},
+			{"Esc", "Back to list (clears history)"},
+			{"⌫  /  ctrl+o", "Navigate back in history"},
+			{"ctrl+i", "Navigate forward in history"},
+			{"← / →", "Switch body tab (Description / Comments / Links)"},
+			{"Enter", "Open linked issue (on Links tab)"},
+			{h.kb.OpenBrowser, "Open in browser"},
 			{h.kb.Transition, "Change status"},
 			{h.kb.AddLabels, "Add labels"},
 			{h.kb.AddComment, "Add comment"},
-			{h.kb.OpenBrowser, "Open in browser"},
 			{h.kb.FieldDiscover, "List all fields"},
 		}
 		sb.WriteString(h.section("Detail View", detail))
 	}
+	if !h.inDetail {
+		listExtra := []binding{
+			{h.kb.OpenBrowser, "Open in browser (without entering detail)"},
+			{h.kb.Sort, "Sort list"},
+		}
+		sb.WriteString(h.section("List View", listExtra))
+	}
 
 	content := sb.String()
-	overlayW := 52
+	overlayW := 64
 	if h.width > 0 && overlayW > h.width-4 {
 		overlayW = h.width - 4
 	}

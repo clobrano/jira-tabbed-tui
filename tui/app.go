@@ -81,6 +81,8 @@ type App struct {
 	statusLine   StatusLine
 	tabBar       TabBar
 	sortCursor    int             // cursor in the sort picker overlay
+	detailHistory []string        // issue keys navigated in the current detail session
+	detailHistIdx int             // current position in detailHistory (-1 = empty)
 	fields        []model.Field
 	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
 	fieldOriginal map[string]bool // snapshot when overlay opened
@@ -150,6 +152,7 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 		tabBar:        NewTabBar(tabNames),
 		fieldInput:    fi,
 		globalSpinner: gs,
+		detailHistIdx: -1,
 	}
 }
 
@@ -391,6 +394,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case a.view == viewDetail:
 			a.view = viewList
+			a.detailHistory = nil
+			a.detailHistIdx = -1
 			return a, nil
 		case a.view == viewList && a.activeTab < len(a.tabs):
 			tab := &a.tabs[a.activeTab]
@@ -486,6 +491,7 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if iss, ok := tab.list.SelectedIssue(); ok {
 			a.view = viewDetail
 			a.detail = a.detail.SetLoading(true)
+			a = a.pushHistory(iss.Key)
 			return a, a.cache.FetchDetailCmd(a.runner, iss.Key)
 		}
 
@@ -551,7 +557,24 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if link, ok := a.detail.SelectedLink(); ok {
 			a.detail = a.detail.SetLoading(true)
+			a = a.pushHistory(link.Key)
 			return a, a.cache.FetchDetailCmd(a.runner, link.Key)
+		}
+
+	case "backspace", "ctrl+o":
+		if a.detailHistIdx > 0 {
+			a.detailHistIdx--
+			key := a.detailHistory[a.detailHistIdx]
+			a.detail = a.detail.SetLoading(true)
+			return a, a.cache.FetchDetailCmd(a.runner, key)
+		}
+
+	case "ctrl+i":
+		if a.detailHistIdx < len(a.detailHistory)-1 {
+			a.detailHistIdx++
+			key := a.detailHistory[a.detailHistIdx]
+			a.detail = a.detail.SetLoading(true)
+			return a, a.cache.FetchDetailCmd(a.runner, key)
 		}
 
 	case "left":
@@ -857,8 +880,19 @@ func (a App) detailView() string {
 
 func (a App) detailHint() string {
 	kb := a.cfg.Keybindings
-	return fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status · %s labels · %s comment · %s browser · Esc back · ? help",
+	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status · %s labels · %s comment · %s browser · Esc list · ? help",
 		kb.Transition, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
+	var nav []string
+	if a.detailHistIdx > 0 {
+		nav = append(nav, "⌫/ctrl+o back")
+	}
+	if a.detailHistIdx < len(a.detailHistory)-1 {
+		nav = append(nav, "ctrl+i fwd")
+	}
+	if len(nav) > 0 {
+		hint = strings.Join(nav, " · ") + " · " + hint
+	}
+	return hint
 }
 
 func (a App) filteredFields() []model.Field {
@@ -1137,6 +1171,14 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 	}
 	a.tabs[idx].list = tab.list.SetLoading(true)
 	return a, a.cache.ForceFetchListCmd(a.runner, idx, tab.name, tab.jql)
+}
+
+// pushHistory records a new navigation target, truncating any forward history.
+func (a App) pushHistory(key string) App {
+	// Keep everything up to (and including) current position, then append new key.
+	a.detailHistory = append(a.detailHistory[:a.detailHistIdx+1], key)
+	a.detailHistIdx = len(a.detailHistory) - 1
+	return a
 }
 
 func (a App) currentTabName() string {
