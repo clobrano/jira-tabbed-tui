@@ -42,6 +42,8 @@ type detailBodyTab int
 const (
 	bodyTabDescription detailBodyTab = iota
 	bodyTabComments
+	bodyTabLinks
+	bodyTabCount // sentinel — keep last
 )
 
 // BackToListMsg is sent when the user presses Esc in the detail view.
@@ -49,15 +51,16 @@ type BackToListMsg struct{}
 
 // Detail is the sub-model for the full-screen issue detail view.
 type Detail struct {
-	issue    model.IssueDetail
-	loading  bool
-	err      error
-	bodyTab  detailBodyTab
-	vp       viewport.Model
-	spinner  spinner.Model
-	sidebar  Sidebar
-	width    int
-	height   int
+	issue      model.IssueDetail
+	loading    bool
+	err        error
+	bodyTab    detailBodyTab
+	linkCursor int
+	vp         viewport.Model
+	spinner    spinner.Model
+	sidebar    Sidebar
+	width      int
+	height     int
 }
 
 func NewDetail(cfg config.Config) Detail {
@@ -99,6 +102,7 @@ func (d Detail) SetIssue(issue model.IssueDetail) Detail {
 	d.loading = false
 	d.err = nil
 	d.bodyTab = bodyTabDescription
+	d.linkCursor = 0
 	d.vp.SetContent(d.bodyContent(d.vp.Width))
 	d.vp.GotoTop()
 	return d
@@ -116,11 +120,8 @@ func (d Detail) SetLoading(v bool) Detail {
 }
 
 func (d Detail) SwitchBodyTab(dir int) Detail {
-	if dir > 0 {
-		d.bodyTab = bodyTabComments
-	} else {
-		d.bodyTab = bodyTabDescription
-	}
+	n := (int(d.bodyTab) + dir + int(bodyTabCount)) % int(bodyTabCount)
+	d.bodyTab = detailBodyTab(n)
 	d.vp.SetContent(d.bodyContent(d.vp.Width))
 	d.vp.GotoTop()
 	return d
@@ -130,10 +131,26 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "j", "down":
-			d.vp.LineDown(1)
+			if d.bodyTab == bodyTabLinks {
+				if d.linkCursor < len(d.issue.Links)-1 {
+					d.linkCursor++
+					d.vp.SetContent(d.bodyContent(d.vp.Width))
+					d.scrollLinkIntoView()
+				}
+			} else {
+				d.vp.LineDown(1)
+			}
 			return d, nil
 		case "k", "up":
-			d.vp.LineUp(1)
+			if d.bodyTab == bodyTabLinks {
+				if d.linkCursor > 0 {
+					d.linkCursor--
+					d.vp.SetContent(d.bodyContent(d.vp.Width))
+					d.scrollLinkIntoView()
+				}
+			} else {
+				d.vp.LineUp(1)
+			}
 			return d, nil
 		case "ctrl+d":
 			d.vp.HalfPageDown()
@@ -155,6 +172,17 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 	return d, cmd
 }
 
+// scrollLinkIntoView adjusts the viewport YOffset so the cursor row is visible.
+// Header is 2 lines (header row + separator), so cursor row is at line linkCursor+2.
+func (d *Detail) scrollLinkIntoView() {
+	line := d.linkCursor + 2
+	if line < d.vp.YOffset {
+		d.vp.YOffset = line
+	} else if line >= d.vp.YOffset+d.vp.Height {
+		d.vp.YOffset = line - d.vp.Height + 1
+	}
+}
+
 func (d Detail) SpinnerTick() (Detail, tea.Cmd) {
 	var cmd tea.Cmd
 	d.spinner, cmd = d.spinner.Update(d.spinner.Tick())
@@ -166,6 +194,14 @@ func (d Detail) Init() tea.Cmd {
 }
 
 func (d Detail) IssueKey() string { return d.issue.Key }
+
+// SelectedLink returns the highlighted link when the Links tab is active.
+func (d Detail) SelectedLink() (model.IssueLink, bool) {
+	if d.bodyTab != bodyTabLinks || d.linkCursor < 0 || d.linkCursor >= len(d.issue.Links) {
+		return model.IssueLink{}, false
+	}
+	return d.issue.Links[d.linkCursor], true
+}
 
 func (d Detail) bodyContent(width int) string {
 	if d.loading || d.err != nil {
@@ -179,6 +215,8 @@ func (d Detail) bodyContent(width int) string {
 		return lipgloss.NewStyle().Width(width).Padding(0, 1).Render(d.issue.Description)
 	case bodyTabComments:
 		return d.renderComments(width)
+	case bodyTabLinks:
+		return d.renderLinks(width)
 	}
 	return ""
 }
@@ -205,6 +243,64 @@ func (d Detail) renderComments(width int) string {
 	return sb.String()
 }
 
+func (d Detail) renderLinks(width int) string {
+	if len(d.issue.Links) == 0 {
+		return statusIdleStyle.Padding(1, 1).Render("No linked issues.")
+	}
+
+	const typeW, keyW, statusW = 20, 12, 14
+	summaryW := width - typeW - keyW - statusW - 8
+	if summaryW < 8 {
+		summaryW = 8
+	}
+
+	typeStyle := lipgloss.NewStyle().Width(typeW).Foreground(lipgloss.Color("#888888"))
+	keyStyle := lipgloss.NewStyle().Width(keyW).Foreground(lipgloss.Color("#5555ff")).Bold(true)
+	summaryStyle := lipgloss.NewStyle().Width(summaryW).Foreground(lipgloss.Color("#dddddd"))
+	statusStyle := lipgloss.NewStyle().Width(statusW).Foreground(lipgloss.Color("#aaaaaa"))
+	cursorStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#222255")).
+		Foreground(lipgloss.Color("#ffffff")).
+		Bold(true)
+	hdrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
+
+	var sb strings.Builder
+	hdr := fmt.Sprintf("  %-*s  %-*s  %-*s  %s", typeW, "TYPE", keyW, "KEY", summaryW, "SUMMARY", "STATUS")
+	sb.WriteString(hdrStyle.Render(hdr) + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")).
+		Render(strings.Repeat("─", width-2)) + "\n")
+
+	for i, link := range d.issue.Links {
+		typ := link.Type
+		if len(typ) > typeW {
+			typ = typ[:typeW-1] + "…"
+		}
+		key := link.Key
+		if len(key) > keyW {
+			key = key[:keyW-1] + "…"
+		}
+		sum := link.Summary
+		if len(sum) > summaryW {
+			sum = sum[:summaryW-1] + "…"
+		}
+		status := link.Status
+		if len(status) > statusW {
+			status = status[:statusW-1] + "…"
+		}
+
+		if i == d.linkCursor {
+			line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s", typeW, typ, keyW, key, summaryW, sum, statusW, status)
+			sb.WriteString(cursorStyle.Width(width - 2).Render(line) + "\n")
+		} else {
+			row := "  " + typeStyle.Render(typ) + "  " + keyStyle.Render(key) + "  " +
+				summaryStyle.Render(sum) + "  " + statusStyle.Render(status)
+			sb.WriteString(row + "\n")
+		}
+	}
+
+	return sb.String()
+}
+
 func (d Detail) View() string {
 	if d.loading {
 		return fmt.Sprintf("\n  %s Loading issue…", d.spinner.View())
@@ -224,12 +320,17 @@ func (d Detail) View() string {
 	// Body tab bar.
 	descTab := detailTabInactiveStyle.Render("Description")
 	commTab := detailTabInactiveStyle.Render("Comments")
-	if d.bodyTab == bodyTabDescription {
+	linkCount := fmt.Sprintf("Links (%d)", len(d.issue.Links))
+	linksTab := detailTabInactiveStyle.Render(linkCount)
+	switch d.bodyTab {
+	case bodyTabDescription:
 		descTab = detailTabActiveStyle.Render("Description")
-	} else {
+	case bodyTabComments:
 		commTab = detailTabActiveStyle.Render("Comments")
+	case bodyTabLinks:
+		linksTab = detailTabActiveStyle.Render(linkCount)
 	}
-	bodyTabBar := descTab + commTab
+	bodyTabBar := descTab + commTab + linksTab
 
 	// Main pane (viewport) + sidebar side by side.
 	mainPane := lipgloss.NewStyle().Width(mainW).Render(d.vp.View())

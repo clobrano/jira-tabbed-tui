@@ -10,12 +10,21 @@ type Issue struct {
 	Status   string
 }
 
-// IssueDetail embeds Issue and adds description, comments, and all raw fields.
+// IssueDetail embeds Issue and adds description, comments, links, and all raw fields.
 type IssueDetail struct {
 	Issue
 	Description string
 	Comments    []Comment
+	Links       []IssueLink
 	Fields      map[string]any
+}
+
+// IssueLink is a single Jira issue link (e.g. "blocks", "is blocked by", "relates to").
+type IssueLink struct {
+	Type    string // relationship label from the link direction (inward or outward)
+	Key     string
+	Summary string
+	Status  string
 }
 
 // Comment is a single Jira comment.

@@ -515,6 +515,12 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "enter":
+		if link, ok := a.detail.SelectedLink(); ok {
+			a.detail = a.detail.SetLoading(true)
+			return a, a.cache.FetchDetailCmd(a.runner, link.Key)
+		}
+
 	case "left":
 		a.detail = a.detail.SwitchBodyTab(-1)
 
@@ -781,7 +787,7 @@ func (a App) detailView() string {
 
 func (a App) detailHint() string {
 	kb := a.cfg.Keybindings
-	return fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ body · %s status · %s labels · %s comment · %s browser · Esc back · ? help",
+	return fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status · %s labels · %s comment · %s browser · Esc back · ? help",
 		kb.Transition, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
 }
 

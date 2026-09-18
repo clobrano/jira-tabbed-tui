@@ -68,6 +68,26 @@ type rawIssueFields struct {
 	Comment     *struct {
 		Comments []rawComment `json:"comments"`
 	} `json:"comment"`
+	IssueLinks []rawIssueLink `json:"issuelinks"`
+}
+
+type rawIssueLink struct {
+	Type struct {
+		Inward  string `json:"inward"`
+		Outward string `json:"outward"`
+	} `json:"type"`
+	InwardIssue  *rawLinkedIssue `json:"inwardIssue"`
+	OutwardIssue *rawLinkedIssue `json:"outwardIssue"`
+}
+
+type rawLinkedIssue struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary string `json:"summary"`
+		Status  struct {
+			Name string `json:"name"`
+		} `json:"status"`
+	} `json:"fields"`
 }
 
 type rawComment struct {
@@ -189,6 +209,26 @@ func parseIssueDetail(data []byte) (model.IssueDetail, error) {
 		// Reverse to newest-first.
 		for i, j := 0, len(detail.Comments)-1; i < j; i, j = i+1, j-1 {
 			detail.Comments[i], detail.Comments[j] = detail.Comments[j], detail.Comments[i]
+		}
+	}
+
+	for _, link := range f.IssueLinks {
+		var linkType string
+		var linked *rawLinkedIssue
+		if link.InwardIssue != nil {
+			linkType = link.Type.Inward
+			linked = link.InwardIssue
+		} else if link.OutwardIssue != nil {
+			linkType = link.Type.Outward
+			linked = link.OutwardIssue
+		}
+		if linked != nil {
+			detail.Links = append(detail.Links, model.IssueLink{
+				Type:    linkType,
+				Key:     linked.Key,
+				Summary: linked.Fields.Summary,
+				Status:  linked.Fields.Status.Name,
+			})
 		}
 	}
 
