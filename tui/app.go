@@ -795,9 +795,11 @@ func (a App) filteredFields() []model.Field {
 }
 
 func (a App) fieldPageHeight() int {
-	h := a.height - 13
-	if h < 3 {
-		h = 3
+	// Fixed overhead: padding(2) + title(1) + filter+blank(2) + counter(1) + blank+hint(2) = 8
+	// Border adds 2 more, terminal margin 2 → total budget a.height - 12 for rows.
+	h := a.height - 12
+	if h < 1 {
+		h = 1
 	}
 	return h
 }
@@ -931,12 +933,19 @@ func (a App) fieldsOverlayView() string {
 		Render("↑/↓ j/k navigate · Enter toggle · type filter · Esc done")
 	sb.WriteString("\n" + hint)
 
+	// MaxHeight truncates before the border is drawn (+2), so cap at a.height-4
+	// to keep the full overlay (content + border) within a.height-2.
+	maxH := a.height - 4
+	if maxH < 5 {
+		maxH = 5
+	}
 	overlay := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#5555ff")).
 		Padding(1, 2).
 		Background(lipgloss.Color("#111111")).
-		Width(overlayW).Render(sb.String())
+		Width(overlayW).
+		MaxHeight(maxH).Render(sb.String())
 
 	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
 }
