@@ -851,8 +851,8 @@ func (a App) applyFieldChanges() App {
 		a.statusLine = a.statusLine.SetMessage("sidebar fields updated", false)
 	}
 
-	// Rebuild the detail sidebar so the change is visible immediately.
-	a.detail = NewDetail(a.cfg)
+	// Swap only the sidebar so the loaded issue and scroll position are preserved.
+	a.detail.sidebar = NewSidebar(a.cfg.Detail.SidebarFields)
 	return a
 }
 
