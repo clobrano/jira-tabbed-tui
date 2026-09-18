@@ -93,9 +93,11 @@ tabs:
 
 list:
   # Available fields: key, type, summary, priority, status, duedate
-  # Omit width (or set to 0) on exactly one column to make it flexible.
+  # label overrides the column header; width fixes the column width in chars
+  # (omit width on exactly one column to make it expand to fill remaining space).
   columns:
     - field: key
+      label: ID
     - field: type
     - field: summary
     - field: status
