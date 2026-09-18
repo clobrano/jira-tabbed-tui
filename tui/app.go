@@ -480,16 +480,6 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "j", "down":
-		var cmd tea.Cmd
-		a.detail, cmd = a.detail.Update(msg)
-		return a, cmd
-
-	case "k", "up":
-		var cmd tea.Cmd
-		a.detail, cmd = a.detail.Update(msg)
-		return a, cmd
-
 	case "left":
 		a.detail = a.detail.SwitchBodyTab(-1)
 
@@ -531,6 +521,12 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return FieldsOverlayMsg{Fields: fields}
 		}
+
+	default:
+		// Forward everything else (j/k/arrows/pgup/pgdn/ctrl+d/ctrl+u/g/G/mouse) to scroll.
+		var cmd tea.Cmd
+		a.detail, cmd = a.detail.Update(msg)
+		return a, cmd
 	}
 	return a, nil
 }
@@ -704,7 +700,7 @@ func (a App) detailView() string {
 
 func (a App) detailHint() string {
 	kb := a.cfg.Keybindings
-	return fmt.Sprintf("←/→ body · %s status · %s labels · %s comment · %s browser · F fields · Esc back · ? help",
+	return fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ body · %s status · %s labels · %s comment · %s browser · Esc back · ? help",
 		kb.Transition, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
 }
 

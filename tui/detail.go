@@ -83,11 +83,13 @@ func (d Detail) SetSize(w, h int, sidebarPct int) Detail {
 	}
 	d.sidebar = d.sidebar.SetWidth(sidebarW)
 	mainW := w - sidebarW - 1
-	vpH := h - 5 // header + body tabs + status
+	vpH := h - 4 // header + body-tab bar
 	if vpH < 3 {
 		vpH = 3
 	}
-	d.vp = viewport.New(mainW, vpH)
+	// Resize in place — recreating would reset YOffset and lose scroll position.
+	d.vp.Width = mainW
+	d.vp.Height = vpH
 	d.vp.SetContent(d.bodyContent(mainW))
 	return d
 }
@@ -125,6 +127,29 @@ func (d Detail) SwitchBodyTab(dir int) Detail {
 }
 
 func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "j", "down":
+			d.vp.LineDown(1)
+			return d, nil
+		case "k", "up":
+			d.vp.LineUp(1)
+			return d, nil
+		case "ctrl+d":
+			d.vp.HalfPageDown()
+			return d, nil
+		case "ctrl+u":
+			d.vp.HalfPageUp()
+			return d, nil
+		case "g":
+			d.vp.GotoTop()
+			return d, nil
+		case "G":
+			d.vp.GotoBottom()
+			return d, nil
+		}
+	}
+	// Forward mouse wheel and any other events to the viewport.
 	var cmd tea.Cmd
 	d.vp, cmd = d.vp.Update(msg)
 	return d, cmd
