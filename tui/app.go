@@ -33,6 +33,7 @@ const (
 	overlayFields        overlayMode = iota
 	overlayAddTab        overlayMode = iota
 	overlayConfirmDelete overlayMode = iota
+	overlayEditJQL       overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -71,6 +72,7 @@ type App struct {
 	labels       actions.LabelsModel
 	comment      actions.CommentModel
 	addTabM      actions.AddTabModel
+	editJQLM     actions.EditJQLModel
 	deleteTabIdx int // tab index pending confirmation
 	help         HelpOverlay
 	statusLine   StatusLine
@@ -282,6 +284,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.overlay = overlayNone
 		return a, nil
 
+	case actions.EditJQLSubmittedMsg:
+		a.overlay = overlayNone
+		tab := &a.tabs[a.activeTab]
+		tab.jql = msg.JQL
+		tab.list = tab.list.SetLoading(true)
+		return a, a.cache.ForceFetchListCmd(a.runner, a.activeTab, tab.name, msg.JQL)
+
+	case actions.EditJQLCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
 	// ── keyboard ─────────────────────────────────────────────────────────────
 	case tea.KeyMsg:
 		return a.handleKey(msg)
@@ -392,6 +405,12 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if n < len(a.tabs) {
 			return a.switchToTab(n)
 		}
+
+	case "Q":
+		tab := a.tabs[a.activeTab]
+		a.editJQLM = actions.NewEditJQLModel(tab.name, tab.jql).SetSize(a.width, a.height)
+		a.overlay = overlayEditJQL
+		return a, nil
 
 	case "+":
 		a.addTabM = actions.NewAddTabModel().SetSize(a.width, a.height)
@@ -505,6 +524,11 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.addTabM, cmd = a.addTabM.Update(msg)
 		return a, cmd
 
+	case overlayEditJQL:
+		var cmd tea.Cmd
+		a.editJQLM, cmd = a.editJQLM.Update(msg)
+		return a, cmd
+
 	case overlayConfirmDelete:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			switch key.String() {
@@ -548,6 +572,8 @@ func (a App) View() string {
 		return a.fieldsOverlayView()
 	case overlayAddTab:
 		return a.addTabM.View()
+	case overlayEditJQL:
+		return a.editJQLM.View()
 	case overlayConfirmDelete:
 		return a.confirmDeleteView()
 	}
@@ -825,6 +851,8 @@ func (a App) resizeAll() App {
 		a.comment = a.comment.SetSize(a.width, a.height)
 	case overlayAddTab:
 		a.addTabM = a.addTabM.SetSize(a.width, a.height)
+	case overlayEditJQL:
+		a.editJQLM = a.editJQLM.SetSize(a.width, a.height)
 	}
 	for i := range a.tabs {
 		if a.tabs[i].isSearch {
