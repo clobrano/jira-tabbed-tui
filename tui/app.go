@@ -99,14 +99,14 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 	tabs = append(tabs, tabState{
 		name:     "Search",
 		isSearch: true,
-		list:     NewIssueList().SetLoading(false),
+		list:     NewIssueList(cfg.List.Columns).SetLoading(false),
 		search:   NewSearchInput(),
 	})
 	for _, t := range cfg.Tabs {
 		tabs = append(tabs, tabState{
 			name: t.Name,
 			jql:  t.JQL,
-			list: NewIssueList(),
+			list: NewIssueList(cfg.List.Columns),
 		})
 	}
 
@@ -1071,7 +1071,7 @@ func (a App) applyAddTab(msg actions.AddTabSubmittedMsg) (tea.Model, tea.Cmd) {
 	newTab := tabState{
 		name: msg.Name,
 		jql:  msg.JQL,
-		list: NewIssueList().SetLoading(true),
+		list: NewIssueList(a.cfg.List.Columns).SetLoading(true),
 	}
 	a.tabs = append(a.tabs, newTab)
 

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/clobrano/jira-tabbed-tui/config"
 	"github.com/clobrano/jira-tabbed-tui/model"
 	"github.com/sahilm/fuzzy"
 )
@@ -43,8 +44,30 @@ var (
 			Italic(true)
 )
 
-// IssueList renders the five-column issue table for a single tab.
+// columnDefaultWidths holds the default width for each known list field.
+// Width 0 means the column is flexible (expands to fill remaining space).
+var columnDefaultWidths = map[string]int{
+	"key":      12,
+	"type":     10,
+	"summary":  0, // flexible
+	"priority": 10,
+	"status":   12,
+	"duedate":  12,
+}
+
+// columnDefaultLabels holds the header label for each known list field.
+var columnDefaultLabels = map[string]string{
+	"key":      "Key",
+	"type":     "Type",
+	"summary":  "Summary",
+	"priority": "Priority",
+	"status":   "Status",
+	"duedate":  "Due Date",
+}
+
+// IssueList renders a configurable-column issue table for a single tab.
 type IssueList struct {
+	columns      []config.ListColumn
 	allIssues    []model.Issue // full unfiltered set
 	issues       []model.Issue // currently displayed (filtered or all)
 	filterActive bool
@@ -62,14 +85,14 @@ type IssueList struct {
 	tbl          table.Model
 }
 
-func NewIssueList() IssueList {
+func NewIssueList(columns []config.ListColumn) IssueList {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#5555ff"))
 	ti := textinput.New()
 	ti.Placeholder = "fuzzy filter…"
 	ti.CharLimit = 128
-	return IssueList{spinner: s, loading: true, filterInput: ti}
+	return IssueList{columns: columns, spinner: s, loading: true, filterInput: ti}
 }
 
 func (l IssueList) SetSize(w, h int) IssueList {
@@ -208,39 +231,107 @@ func (l IssueList) Init() tea.Cmd {
 	return l.spinner.Tick
 }
 
+// colWidth returns the effective pixel width for a configured column.
+// Width==0 in config means "use the field default" (0 = flexible for summary).
+func colWidth(c config.ListColumn) int {
+	if c.Width > 0 {
+		return c.Width
+	}
+	if w, ok := columnDefaultWidths[c.Field]; ok {
+		return w
+	}
+	return 10
+}
+
+// colLabel returns the header label for a configured column.
+func colLabel(c config.ListColumn) string {
+	if c.Label != "" {
+		return c.Label
+	}
+	if l, ok := columnDefaultLabels[c.Field]; ok {
+		return l
+	}
+	return c.Field
+}
+
+// issueFieldValue extracts the value for a field ID from an Issue.
+func issueFieldValue(iss model.Issue, field string) string {
+	switch field {
+	case "key":
+		return iss.Key
+	case "type":
+		return iss.Type
+	case "summary":
+		return iss.Summary
+	case "priority":
+		return iss.Priority
+	case "status":
+		return iss.Status
+	case "duedate":
+		return iss.DueDate
+	}
+	return ""
+}
+
 func (l IssueList) buildTable() table.Model {
 	if l.width == 0 {
 		return table.Model{}
 	}
-	const (
-		keyW  = 12
-		typeW = 10
-		priW  = 10
-		dueW  = 12
-		// Each column gains 2 chars from cell Padding(0,1), and the outer
-		// NormalBorder from tableBaseStyle adds 2 more: 5*2 + 2 = 12.
-		borders = 12
-	)
-	summaryW := l.width - keyW - typeW - priW - dueW - borders
-	if summaryW < 10 {
-		summaryW = 10
+
+	columns := l.columns
+	if len(columns) == 0 {
+		columns = []config.ListColumn{
+			{Field: "key"}, {Field: "type"}, {Field: "summary"}, {Field: "status"},
+		}
 	}
 
-	cols := []table.Column{
-		{Title: "Key", Width: keyW},
-		{Title: "Type", Width: typeW},
-		{Title: "Summary", Width: summaryW},
-		{Title: "Priority", Width: priW},
-		{Title: "Due Date", Width: dueW},
+	// Find the flexible column index (effective width == 0).
+	flexIdx := -1
+	for i, c := range columns {
+		if colWidth(c) == 0 {
+			flexIdx = i
+			break
+		}
+	}
+	// If none explicitly flexible, make the last column flexible.
+	if flexIdx == -1 {
+		flexIdx = len(columns) - 1
+	}
+
+	// Each column gains 2 chars from cell Padding(0,1); outer NormalBorder adds 2.
+	borders := len(columns)*2 + 2
+	fixedW := 0
+	for i, c := range columns {
+		if i != flexIdx {
+			fixedW += colWidth(c)
+		}
+	}
+	flexW := l.width - fixedW - borders
+	if flexW < 10 {
+		flexW = 10
+	}
+
+	cols := make([]table.Column, len(columns))
+	for i, c := range columns {
+		w := colWidth(c)
+		if i == flexIdx {
+			w = flexW
+		}
+		cols[i] = table.Column{Title: colLabel(c), Width: w}
 	}
 
 	rows := make([]table.Row, 0, len(l.issues))
 	for _, iss := range l.issues {
-		summary := iss.Summary
-		if len(summary) > summaryW-2 {
-			summary = summary[:summaryW-2] + "…"
+		row := make(table.Row, len(columns))
+		for i, c := range columns {
+			v := issueFieldValue(iss, c.Field)
+			maxW := cols[i].Width - 2
+			if maxW > 0 && len(v) > maxW {
+				v = v[:maxW-1] + "…"
+			}
+			row[i] = v
 		}
-		rows = append(rows, table.Row{iss.Key, iss.Type, summary, iss.Priority, iss.DueDate})
+		rows = append(rows, row)
 	}
 
 	tableHeight := l.height - 4

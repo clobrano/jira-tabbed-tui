@@ -20,6 +20,16 @@ type Tab struct {
 	JQL  string `yaml:"jql"`
 }
 
+type ListColumn struct {
+	Field string `yaml:"field"`
+	Label string `yaml:"label"`
+	Width int    `yaml:"width"` // 0 = flexible (only one column should be flexible)
+}
+
+type List struct {
+	Columns []ListColumn `yaml:"columns"`
+}
+
 type SidebarField struct {
 	Field string `yaml:"field"`
 	Label string `yaml:"label"`
@@ -43,6 +53,7 @@ type Keybindings struct {
 type Config struct {
 	Backend     Backend     `yaml:"backend"`
 	Tabs        []Tab       `yaml:"tabs"`
+	List        List        `yaml:"list"`
 	Detail      Detail      `yaml:"detail"`
 	Keybindings Keybindings `yaml:"keybindings"`
 }
@@ -79,6 +90,15 @@ tabs:
     jql: assignee = currentUser()
   - name: In Progress
     jql: assignee = currentUser() AND status = "In Progress"
+
+list:
+  # Available fields: key, type, summary, priority, status, duedate
+  # Omit width (or set to 0) on exactly one column to make it flexible.
+  columns:
+    - field: key
+    - field: type
+    - field: summary
+    - field: status
 
 detail:
   sidebar_width: 33
@@ -126,6 +146,14 @@ func Load(path string) (Config, error) {
 func (c *Config) applyDefaults() {
 	if c.Backend.CLI == "" {
 		c.Backend.CLI = "jira"
+	}
+	if len(c.List.Columns) == 0 {
+		c.List.Columns = []ListColumn{
+			{Field: "key"},
+			{Field: "type"},
+			{Field: "summary"},
+			{Field: "status"},
+		}
 	}
 	if c.Detail.SidebarWidth == 0 {
 		c.Detail.SidebarWidth = 33
