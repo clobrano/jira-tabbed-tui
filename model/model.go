@@ -1,6 +1,6 @@
 package model
 
-// Issue holds the five list columns shown in the tab view.
+// Issue holds the fields shown in the tab list view.
 type Issue struct {
 	Key      string
 	Type     string
@@ -8,6 +8,8 @@ type Issue struct {
 	Priority string
 	DueDate  string
 	Status   string
+	Created  string
+	Updated  string
 }
 
 // IssueDetail embeds Issue and adds description, comments, links, and all raw fields.

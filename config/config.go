@@ -48,6 +48,7 @@ type Keybindings struct {
 	FieldDiscover string `yaml:"field_discovery"`
 	ForceRefresh  string `yaml:"force_refresh"`
 	Help          string `yaml:"help"`
+	Sort          string `yaml:"sort"` // list-view sort picker (list view only; 's' also defaults transition in detail view)
 }
 
 type Config struct {
@@ -189,6 +190,9 @@ func (c *Config) applyDefaults() {
 	}
 	if kb.Help == "" {
 		kb.Help = "?"
+	}
+	if kb.Sort == "" {
+		kb.Sort = "s"
 	}
 }
 

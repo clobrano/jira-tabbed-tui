@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -53,6 +55,8 @@ var columnDefaultWidths = map[string]int{
 	"priority": 10,
 	"status":   12,
 	"duedate":  12,
+	"created":  12,
+	"updated":  12,
 }
 
 // columnDefaultLabels holds the header label for each known list field.
@@ -63,16 +67,20 @@ var columnDefaultLabels = map[string]string{
 	"priority": "Priority",
 	"status":   "Status",
 	"duedate":  "Due Date",
+	"created":  "Created",
+	"updated":  "Updated",
 }
 
 // IssueList renders a configurable-column issue table for a single tab.
 type IssueList struct {
 	columns      []config.ListColumn
-	allIssues    []model.Issue // full unfiltered set
+	allIssues    []model.Issue // full unfiltered set (in current sort order)
 	issues       []model.Issue // currently displayed (filtered or all)
 	filterActive bool
 	filterQuery  string
 	filterInput  textinput.Model
+	sortField    string // "" = server order
+	sortAsc      bool
 	total        int
 	loading      bool
 	loadingMore  bool
@@ -103,16 +111,21 @@ func (l IssueList) SetSize(w, h int) IssueList {
 }
 
 func (l IssueList) SetIssues(issues []model.Issue, total int, stale bool, err error) IssueList {
-	l.allIssues = issues
 	l.total = total
 	l.stale = stale
 	l.err = err
 	l.loading = false
 	l.loadingMore = false
+	// Re-apply current sort to fresh data.
+	if l.sortField != "" {
+		l.allIssues = sortIssues(issues, l.sortField, l.sortAsc)
+	} else {
+		l.allIssues = issues
+	}
 	if l.filterQuery != "" {
 		l.issues = applyFuzzyFilter(l.filterQuery, l.allIssues)
 	} else {
-		l.issues = issues
+		l.issues = l.allIssues
 	}
 	if l.cursor >= len(l.issues) && len(l.issues) > 0 {
 		l.cursor = len(l.issues) - 1
@@ -120,6 +133,26 @@ func (l IssueList) SetIssues(issues []model.Issue, total int, stale bool, err er
 	l.tbl = l.buildTable()
 	return l
 }
+
+// SetSort applies an in-memory sort without fetching new data.
+func (l IssueList) SetSort(field string, asc bool) IssueList {
+	l.sortField = field
+	l.sortAsc = asc
+	if field != "" {
+		l.allIssues = sortIssues(l.allIssues, field, asc)
+	}
+	if l.filterQuery != "" {
+		l.issues = applyFuzzyFilter(l.filterQuery, l.allIssues)
+	} else {
+		l.issues = l.allIssues
+	}
+	l.cursor = 0
+	l.tbl = l.buildTable()
+	return l
+}
+
+func (l IssueList) SortField() string { return l.sortField }
+func (l IssueList) SortAsc() bool     { return l.sortAsc }
 
 func (l IssueList) SetLoading(v bool) IssueList {
 	l.loading = v
@@ -269,8 +302,55 @@ func issueFieldValue(iss model.Issue, field string) string {
 		return iss.Status
 	case "duedate":
 		return iss.DueDate
+	case "created":
+		return iss.Created
+	case "updated":
+		return iss.Updated
 	}
 	return ""
+}
+
+// sortIssues returns a sorted copy of issues; original slice is not modified.
+func sortIssues(issues []model.Issue, field string, asc bool) []model.Issue {
+	if field == "" || len(issues) == 0 {
+		return issues
+	}
+	sorted := make([]model.Issue, len(issues))
+	copy(sorted, issues)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		var less bool
+		if field == "key" {
+			less = issueKeyLess(sorted[i].Key, sorted[j].Key)
+		} else {
+			vi := strings.ToLower(issueFieldValue(sorted[i], field))
+			vj := strings.ToLower(issueFieldValue(sorted[j], field))
+			less = vi < vj
+		}
+		if asc {
+			return less
+		}
+		return !less
+	})
+	return sorted
+}
+
+// issueKeyLess compares two Jira keys (e.g. PROJ-10 < PROJ-20) numerically.
+func issueKeyLess(a, b string) bool {
+	ai := strings.LastIndex(a, "-")
+	bi := strings.LastIndex(b, "-")
+	if ai < 0 || bi < 0 {
+		return a < b
+	}
+	aPrefix, bPrefix := a[:ai], b[:bi]
+	if aPrefix != bPrefix {
+		return aPrefix < bPrefix
+	}
+	an, aerr := strconv.Atoi(a[ai+1:])
+	bn, berr := strconv.Atoi(b[bi+1:])
+	if aerr != nil || berr != nil {
+		return a[ai+1:] < b[bi+1:]
+	}
+	return an < bn
 }
 
 func (l IssueList) buildTable() table.Model {
@@ -317,7 +397,15 @@ func (l IssueList) buildTable() table.Model {
 		if i == flexIdx {
 			w = flexW
 		}
-		cols[i] = table.Column{Title: colLabel(c), Width: w}
+		title := colLabel(c)
+		if l.sortField == c.Field {
+			if l.sortAsc {
+				title += " ▲"
+			} else {
+				title += " ▼"
+			}
+		}
+		cols[i] = table.Column{Title: title, Width: w}
 	}
 
 	rows := make([]table.Row, 0, len(l.issues))

@@ -36,6 +36,7 @@ const (
 	overlayAddTab        overlayMode = iota
 	overlayConfirmDelete overlayMode = iota
 	overlayEditJQL       overlayMode = iota
+	overlaySort          overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -79,6 +80,7 @@ type App struct {
 	help         HelpOverlay
 	statusLine   StatusLine
 	tabBar       TabBar
+	sortCursor    int             // cursor in the sort picker overlay
 	fields        []model.Field
 	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
 	fieldOriginal map[string]bool // snapshot when overlay opened
@@ -526,6 +528,20 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if iss, ok := tab.list.SelectedIssue(); ok {
 			return a, a.openBrowserCmd(iss.Key)
 		}
+
+	case a.cfg.Keybindings.Sort:
+		if !tab.isSearch {
+			sf := a.sortableFields()
+			// Pre-position cursor on the currently active sort field.
+			a.sortCursor = 0
+			for i, f := range sf {
+				if f.ID == tab.list.SortField() {
+					a.sortCursor = i
+					break
+				}
+			}
+			a.overlay = overlaySort
+		}
 	}
 	return a, nil
 }
@@ -666,6 +682,33 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case overlaySort:
+		if key, ok := msg.(tea.KeyMsg); ok {
+			sf := a.sortableFields()
+			switch key.String() {
+			case "down", "j":
+				if a.sortCursor < len(sf)-1 {
+					a.sortCursor++
+				}
+			case "up", "k":
+				if a.sortCursor > 0 {
+					a.sortCursor--
+				}
+			case "enter":
+				if a.sortCursor < len(sf) && a.activeTab < len(a.tabs) {
+					chosen := sf[a.sortCursor].ID
+					tab := &a.tabs[a.activeTab]
+					asc := true
+					if tab.list.SortField() == chosen {
+						asc = !tab.list.SortAsc() // toggle direction
+					}
+					tab.list = tab.list.SetSort(chosen, asc)
+				}
+				a.overlay = overlayNone
+			}
+		}
+		return a, nil
+
 	case overlayAddTab:
 		var cmd tea.Cmd
 		a.addTabM, cmd = a.addTabM.Update(msg)
@@ -719,6 +762,8 @@ func (a App) View() string {
 		return a.fieldsOverlayView()
 	case overlayFieldsConfirm:
 		return a.fieldsConfirmView()
+	case overlaySort:
+		return a.sortOverlayView()
 	case overlayAddTab:
 		return a.addTabM.View()
 	case overlayEditJQL:
@@ -783,8 +828,16 @@ func (a App) listHint() string {
 	if tab.list.IsFilterApplied() {
 		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
 	}
-	return fmt.Sprintf("j/k navigate · Enter open · %s browser · / filter · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
-		a.cfg.Keybindings.OpenBrowser)
+	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
+		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Sort)
+	if tab.list.SortField() != "" {
+		dir := "▲"
+		if !tab.list.SortAsc() {
+			dir = "▼"
+		}
+		hint = fmt.Sprintf("sorted by %s %s · %s", tab.list.SortField(), dir, hint)
+	}
+	return hint
 }
 
 func (a App) detailView() string {
@@ -1172,6 +1225,93 @@ func (a App) applyDeleteTab(idx int) (tea.Model, tea.Cmd) {
 		return a, a.cache.ForceFetchListCmd(a.runner, a.activeTab, t.name, t.jql)
 	}
 	return a, nil
+}
+
+type sortableField struct {
+	ID    string
+	Label string
+}
+
+// sortableFields returns the list of fields the user can sort by:
+// all configured list columns plus created and updated.
+func (a App) sortableFields() []sortableField {
+	seen := make(map[string]bool)
+	fields := make([]sortableField, 0, len(a.cfg.List.Columns)+2)
+	for _, c := range a.cfg.List.Columns {
+		if seen[c.Field] {
+			continue
+		}
+		seen[c.Field] = true
+		label := c.Label
+		if label == "" {
+			if l, ok := columnDefaultLabels[c.Field]; ok {
+				label = l
+			} else {
+				label = c.Field
+			}
+		}
+		fields = append(fields, sortableField{ID: c.Field, Label: label})
+	}
+	for _, extra := range []sortableField{
+		{ID: "created", Label: "Created"},
+		{ID: "updated", Label: "Updated"},
+	} {
+		if !seen[extra.ID] {
+			fields = append(fields, extra)
+		}
+	}
+	return fields
+}
+
+func (a App) sortOverlayView() string {
+	sf := a.sortableFields()
+	var currentField string
+	var currentAsc bool
+	if a.activeTab < len(a.tabs) {
+		tab := a.tabs[a.activeTab]
+		currentField = tab.list.SortField()
+		currentAsc = tab.list.SortAsc()
+	}
+
+	cursorBg := lipgloss.NewStyle().Background(lipgloss.Color("#222255")).Foreground(lipgloss.Color("#ffffff")).Bold(true)
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00cc44")).Bold(true)
+	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true).Render("Sort by") + "\n\n")
+
+	const rowW = 28
+	for i, f := range sf {
+		var indicator string
+		if f.ID == currentField {
+			if currentAsc {
+				indicator = activeStyle.Render("▲ ")
+			} else {
+				indicator = activeStyle.Render("▼ ")
+			}
+		} else {
+			indicator = dimStyle.Render("  ")
+		}
+		label := normalStyle.Render(fmt.Sprintf("%-*s", rowW-2, f.Label))
+		row := indicator + label
+		if i == a.sortCursor {
+			row = cursorBg.Width(rowW).Render(indicator + fmt.Sprintf("%-*s", rowW-2, f.Label))
+		}
+		sb.WriteString(row + "\n")
+	}
+
+	hint := dimStyle.Render("\nj/k select · Enter apply · same field reverses · Esc close")
+	sb.WriteString(hint)
+
+	overlay := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#5555ff")).
+		Padding(1, 2).
+		Background(lipgloss.Color("#111111")).
+		Width(rowW + 8).Render(sb.String())
+
+	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
 }
 
 // confirmDeleteView renders the "are you sure?" overlay.

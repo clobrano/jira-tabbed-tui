@@ -64,6 +64,8 @@ type rawIssueFields struct {
 		DisplayName string `json:"displayName"`
 	} `json:"reporter"`
 	Labels      []string        `json:"labels"`
+	Created     string          `json:"created"`
+	Updated     string          `json:"updated"`
 	Description json.RawMessage `json:"description"`
 	Comment     *struct {
 		Comments []rawComment `json:"comments"`
@@ -132,6 +134,8 @@ func parseIssueList(data []byte) ([]model.Issue, int, error) {
 		if f.DueDate != nil {
 			iss.DueDate = *f.DueDate
 		}
+		iss.Created = formatDate(f.Created)
+		iss.Updated = formatDate(f.Updated)
 		issues = append(issues, iss)
 	}
 	return issues, total, nil
