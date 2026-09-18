@@ -217,8 +217,10 @@ func (l IssueList) buildTable() table.Model {
 		typeW = 10
 		priW  = 10
 		dueW  = 12
+		// Each column gains 2 chars from cell Padding(0,1), and the outer
+		// NormalBorder from tableBaseStyle adds 2 more: 5*2 + 2 = 12.
+		borders = 12
 	)
-	borders := 3
 	summaryW := l.width - keyW - typeW - priW - dueW - borders
 	if summaryW < 10 {
 		summaryW = 10
