@@ -336,17 +336,18 @@ func (d Detail) View() string {
 		detailTitleStyle.Width(mainW-len(d.issue.Key)-3).Render(d.issue.Summary)
 
 	// Body tab bar.
+	commLabel := fmt.Sprintf("Comments (%d)", len(d.issue.Comments))
+	linkLabel := fmt.Sprintf("Links (%d)", len(d.issue.Links))
 	descTab := detailTabInactiveStyle.Render("Description")
-	commTab := detailTabInactiveStyle.Render("Comments")
-	linkCount := fmt.Sprintf("Links (%d)", len(d.issue.Links))
-	linksTab := detailTabInactiveStyle.Render(linkCount)
+	commTab := detailTabInactiveStyle.Render(commLabel)
+	linksTab := detailTabInactiveStyle.Render(linkLabel)
 	switch d.bodyTab {
 	case bodyTabDescription:
 		descTab = detailTabActiveStyle.Render("Description")
 	case bodyTabComments:
-		commTab = detailTabActiveStyle.Render("Comments")
+		commTab = detailTabActiveStyle.Render(commLabel)
 	case bodyTabLinks:
-		linksTab = detailTabActiveStyle.Render(linkCount)
+		linksTab = detailTabActiveStyle.Render(linkLabel)
 	}
 	bodyTabBar := descTab + commTab + linksTab
 
