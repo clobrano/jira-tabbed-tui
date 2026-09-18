@@ -504,6 +504,11 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.overlay = overlayConfirmDelete
 			return a, nil
 		}
+
+	case a.cfg.Keybindings.OpenBrowser:
+		if iss, ok := tab.list.SelectedIssue(); ok {
+			return a, a.openBrowserCmd(iss.Key)
+		}
 	}
 	return a, nil
 }
@@ -540,7 +545,7 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case a.cfg.Keybindings.OpenBrowser:
-		return a, a.openBrowserCmd()
+		return a, a.openBrowserCmd(a.detail.IssueKey())
 
 	case a.cfg.Keybindings.FieldDiscover:
 		key := a.detail.IssueKey()
@@ -755,7 +760,8 @@ func (a App) listHint() string {
 	if tab.list.IsFilterApplied() {
 		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
 	}
-	return "j/k navigate · Enter open · / filter · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit"
+	return fmt.Sprintf("j/k navigate · Enter open · %s browser · / filter · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
+		a.cfg.Keybindings.OpenBrowser)
 }
 
 func (a App) detailView() string {
@@ -1175,8 +1181,7 @@ func (a App) confirmDeleteView() string {
 	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
 }
 
-func (a App) openBrowserCmd() tea.Cmd {
-	key := a.detail.IssueKey()
+func (a App) openBrowserCmd(key string) tea.Cmd {
 	baseURL := strings.TrimRight(a.cfg.Backend.URL, "/")
 	cli := a.cfg.Backend.CLI
 	return func() tea.Msg {
