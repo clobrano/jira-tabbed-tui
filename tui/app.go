@@ -37,6 +37,7 @@ const (
 	overlayConfirmDelete overlayMode = iota
 	overlayEditJQL       overlayMode = iota
 	overlaySort          overlayMode = iota
+	overlayAssign        overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -74,6 +75,7 @@ type App struct {
 	transition   actions.TransitionModel
 	labels       actions.LabelsModel
 	comment      actions.CommentModel
+	assign       actions.AssignModel
 	addTabM      actions.AddTabModel
 	editJQLM     actions.EditJQLModel
 	deleteTabIdx int // tab index pending confirmation
@@ -313,6 +315,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.overlay = overlayNone
 		return a, nil
 
+	// ── assign overlay messages ──────────────────────────────────────────────
+	case backend.AssignSearchDoneMsg:
+		a.assign = a.assign.SetResults(msg.Users, msg.Err)
+		if msg.Err != nil {
+			a.statusLine = a.statusLine.SetMessage("user search failed: "+msg.Err.Error(), true)
+		}
+		return a, nil
+
+	case actions.AssignSearchRequestMsg:
+		return a, backend.AssignSearchCmd(a.cfg.Backend.URL, msg.IssueKey, msg.Query)
+
+	case actions.AssignConfirmedMsg:
+		a.overlay = overlayNone
+		tabName := a.currentTabName()
+		return a, backend.DoAssignCmd(a.runner, msg.IssueKey, msg.Login, msg.DisplayName, tabName)
+
+	case actions.AssignCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
 	case actions.LabelsSubmittedMsg:
 		a.overlay = overlayNone
 		tabName := a.currentTabName()
@@ -535,6 +557,20 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, a.openBrowserCmd(iss.Key)
 		}
 
+	case a.cfg.Keybindings.Transition:
+		if iss, ok := tab.list.SelectedIssue(); ok {
+			a.transition = actions.NewTransitionModel(iss.Key).SetSize(a.width, a.height)
+			a.overlay = overlayTransition
+			return a, backend.FetchTransitionsCmd(a.runner, a.cfg.Backend.URL, iss.Key)
+		}
+
+	case a.cfg.Keybindings.Assign:
+		if iss, ok := tab.list.SelectedIssue(); ok {
+			a.assign = actions.NewAssignModel(iss.Key).SetSize(a.width, a.height)
+			a.overlay = overlayAssign
+			return a, nil
+		}
+
 	case a.cfg.Keybindings.Sort:
 		if !tab.isSearch {
 			sf := a.sortableFields()
@@ -589,6 +625,12 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.overlay = overlayTransition
 		return a, backend.FetchTransitionsCmd(a.runner, a.cfg.Backend.URL, key)
 
+	case a.cfg.Keybindings.Assign:
+		key := a.detail.IssueKey()
+		a.assign = actions.NewAssignModel(key).SetSize(a.width, a.height)
+		a.overlay = overlayAssign
+		return a, nil
+
 	case a.cfg.Keybindings.AddLabels:
 		key := a.detail.IssueKey()
 		a.labels = actions.NewLabelsModel(key).SetSize(a.width, a.height)
@@ -633,6 +675,11 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlayTransition:
 		var cmd tea.Cmd
 		a.transition, cmd = a.transition.Update(msg)
+		return a, cmd
+
+	case overlayAssign:
+		var cmd tea.Cmd
+		a.assign, cmd = a.assign.Update(msg)
 		return a, cmd
 
 	case overlayLabels:
@@ -777,6 +824,8 @@ func (a App) View() string {
 			a.help.View())
 	case overlayTransition:
 		return a.transition.View()
+	case overlayAssign:
+		return a.assign.View()
 	case overlayLabels:
 		return a.labels.View()
 	case overlayComment:
@@ -851,8 +900,8 @@ func (a App) listHint() string {
 	if tab.list.IsFilterApplied() {
 		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
 	}
-	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
-		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Sort)
+	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
+		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Sort)
 	if tab.list.SortField() != "" {
 		dir := "▲"
 		if !tab.list.SortAsc() {
@@ -1417,6 +1466,8 @@ func (a App) resizeAll() App {
 	switch a.overlay {
 	case overlayTransition:
 		a.transition = a.transition.SetSize(a.width, a.height)
+	case overlayAssign:
+		a.assign = a.assign.SetSize(a.width, a.height)
 	case overlayLabels:
 		a.labels = a.labels.SetSize(a.width, a.height)
 	case overlayComment:

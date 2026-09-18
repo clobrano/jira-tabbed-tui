@@ -44,6 +44,7 @@ type Keybindings struct {
 	Transition    string `yaml:"transition"`
 	AddLabels     string `yaml:"add_labels"`
 	AddComment    string `yaml:"add_comment"`
+	Assign        string `yaml:"assign"`
 	OpenBrowser   string `yaml:"open_browser"`
 	FieldDiscover string `yaml:"field_discovery"`
 	ForceRefresh  string `yaml:"force_refresh"`
@@ -171,13 +172,16 @@ func (c *Config) applyDefaults() {
 	}
 	kb := &c.Keybindings
 	if kb.Transition == "" {
-		kb.Transition = "s"
+		kb.Transition = "m"
 	}
 	if kb.AddLabels == "" {
 		kb.AddLabels = "l"
 	}
 	if kb.AddComment == "" {
 		kb.AddComment = "c"
+	}
+	if kb.Assign == "" {
+		kb.Assign = "a"
 	}
 	if kb.OpenBrowser == "" {
 		kb.OpenBrowser = "o"

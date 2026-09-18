@@ -91,6 +91,7 @@ func (h HelpOverlay) View() string {
 			{"Enter", "Open linked issue (on Links tab)"},
 			{h.kb.OpenBrowser, "Open in browser"},
 			{h.kb.Transition, "Change status"},
+			{h.kb.Assign, "Assign issue"},
 			{h.kb.AddLabels, "Add labels"},
 			{h.kb.AddComment, "Add comment"},
 			{h.kb.FieldDiscover, "List all fields"},
@@ -100,6 +101,8 @@ func (h HelpOverlay) View() string {
 	if !h.inDetail {
 		listExtra := []binding{
 			{h.kb.OpenBrowser, "Open in browser (without entering detail)"},
+			{h.kb.Transition, "Change status"},
+			{h.kb.Assign, "Assign issue"},
 			{h.kb.Sort, "Sort list"},
 		}
 		sb.WriteString(h.section("List View", listExtra))
