@@ -95,7 +95,7 @@ func renderNode(node map[string]any) string {
 		}
 		prefix := strings.Repeat("#", level) + " "
 		content := strings.TrimRight(renderChildren(node), "\n")
-		return adfHeadingStyle[idx].Render(prefix+content) + "\n"
+		return "\n" + adfHeadingStyle[idx].Render(prefix+content) + "\n"
 
 	case "blockquote":
 		inner := renderChildren(node)

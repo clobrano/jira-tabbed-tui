@@ -93,7 +93,7 @@ tabs:
     jql: assignee = currentUser() AND status = "In Progress"
 
 list:
-  # Available fields: key, type, summary, priority, status, duedate
+  # Available fields: key, type, summary, priority, status, assignee, duedate, created, updated
   # label overrides the column header; width fixes the column width in chars
   # (omit width on exactly one column to make it expand to fill remaining space).
   columns:
