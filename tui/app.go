@@ -901,6 +901,7 @@ func (a App) fieldsOverlayView() string {
 			end = len(filtered)
 		}
 
+		const nameW, idW = 18, 14
 		rowW := innerW
 		for i, f := range filtered[start:end] {
 			abs := start + i
@@ -910,13 +911,22 @@ func (a App) fieldsOverlayView() string {
 			} else {
 				checkbox = uncheckedStyle.Render("[ ]")
 			}
+			// Truncate each column to its fixed width so the row never wraps.
+			name := f.DisplayName
+			if len(name) > nameW {
+				name = name[:nameW-1] + "…"
+			}
+			id := f.ID
+			if len(id) > idW {
+				id = id[:idW-1] + "…"
+			}
 			val := fieldValue(a.detail.issue, f.ID)
 			if len(val) > valueW {
 				val = val[:valueW-1] + "…"
 			}
 			row := checkbox + " " +
-				nameStyle.Render(f.DisplayName) + "  " +
-				idStyle.Render(f.ID) + "  " +
+				nameStyle.Render(name) + "  " +
+				idStyle.Render(id) + "  " +
 				valueStyle.Render(val)
 			if abs == a.fieldCursor {
 				row = cursorBg.Width(rowW).Render(row)
@@ -933,11 +943,12 @@ func (a App) fieldsOverlayView() string {
 		Render("↑/↓ j/k navigate · Enter toggle · type filter · Esc done")
 	sb.WriteString("\n" + hint)
 
-	// MaxHeight truncates before the border is drawn (+2), so cap at a.height-4
-	// to keep the full overlay (content + border) within a.height-2.
-	maxH := a.height - 4
-	if maxH < 5 {
-		maxH = 5
+	// MaxHeight fires AFTER the border is applied, so it constrains the total
+	// overlay height (content + padding + border). Cap at a.height-2 to leave
+	// one terminal row of margin on each side for lipgloss.Place centering.
+	maxH := a.height - 2
+	if maxH < 10 {
+		maxH = 10
 	}
 	overlay := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
