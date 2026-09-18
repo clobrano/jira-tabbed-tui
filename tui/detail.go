@@ -254,6 +254,9 @@ func (d Detail) renderLinks(width int) string {
 	if len(d.issue.Links) == 0 {
 		return statusIdleStyle.Padding(1, 1).Render("No linked issues.")
 	}
+	if width < 10 {
+		width = 10
+	}
 
 	const typeW, keyW, statusW = 20, 12, 14
 	summaryW := width - typeW - keyW - statusW - 8
@@ -274,8 +277,12 @@ func (d Detail) renderLinks(width int) string {
 	var sb strings.Builder
 	hdr := fmt.Sprintf("  %-*s  %-*s  %-*s  %s", typeW, "TYPE", keyW, "KEY", summaryW, "SUMMARY", "STATUS")
 	sb.WriteString(hdrStyle.Render(hdr) + "\n")
+	sepW := width - 2
+	if sepW < 0 {
+		sepW = 0
+	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")).
-		Render(strings.Repeat("─", width-2)) + "\n")
+		Render(strings.Repeat("─", sepW)) + "\n")
 
 	for i, link := range d.issue.Links {
 		typ := link.Type
