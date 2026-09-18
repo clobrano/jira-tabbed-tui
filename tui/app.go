@@ -32,6 +32,7 @@ const (
 	overlayComment       overlayMode = iota
 	overlayHelp          overlayMode = iota
 	overlayFields        overlayMode = iota
+	overlayFieldsConfirm overlayMode = iota
 	overlayAddTab        overlayMode = iota
 	overlayConfirmDelete overlayMode = iota
 	overlayEditJQL       overlayMode = iota
@@ -78,9 +79,12 @@ type App struct {
 	help         HelpOverlay
 	statusLine   StatusLine
 	tabBar       TabBar
-	fields       []model.Field
-	fieldScroll  int
-	fieldInput   textinput.Model
+	fields        []model.Field
+	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
+	fieldOriginal map[string]bool // snapshot when overlay opened
+	fieldCursor   int             // cursor row within filtered list
+	fieldScroll   int             // first visible row
+	fieldInput    textinput.Model
 	width        int
 	height       int
 	globalSpinner spinner.Model
@@ -255,12 +259,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── field discovery ──────────────────────────────────────────────────────
 	case FieldsOverlayMsg:
 		a.fields = msg.Fields
+		a.fieldCursor = 0
 		a.fieldScroll = 0
+		// Snapshot current sidebar field IDs as both original and working state.
+		sel := make(map[string]bool, len(a.cfg.Detail.SidebarFields))
+		for _, sf := range a.cfg.Detail.SidebarFields {
+			sel[sf.Field] = true
+		}
+		a.fieldOriginal = sel
+		a.fieldSelected = make(map[string]bool, len(sel))
+		for k, v := range sel {
+			a.fieldSelected[k] = v
+		}
 		overlayW := 60
 		if overlayW > a.width-4 {
 			overlayW = a.width - 4
 		}
-		a.fieldInput.Width = overlayW - 8
+		a.fieldInput.Width = overlayW - 10
 		a.fieldInput.SetValue("")
 		a.fieldInput.Focus()
 		a.overlay = overlayFields
@@ -564,32 +579,60 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case overlayFields:
 		if key, ok := msg.(tea.KeyMsg); ok {
+			filtered := a.filteredFields()
 			switch key.String() {
-			case "down":
-				filtered := a.filteredFields()
-				if a.fieldScroll < len(filtered)-1 {
-					a.fieldScroll++
+			case "down", "j":
+				if a.fieldCursor < len(filtered)-1 {
+					a.fieldCursor++
 				}
-			case "up":
-				if a.fieldScroll > 0 {
-					a.fieldScroll--
+				a = a.clampFieldScroll()
+			case "up", "k":
+				if a.fieldCursor > 0 {
+					a.fieldCursor--
+				}
+				a = a.clampFieldScroll()
+			case "enter":
+				if len(filtered) > 0 && a.fieldCursor < len(filtered) {
+					id := filtered[a.fieldCursor].ID
+					a.fieldSelected[id] = !a.fieldSelected[id]
 				}
 			case "esc":
 				if a.fieldInput.Value() != "" {
 					a.fieldInput.SetValue("")
+					a.fieldCursor = 0
 					a.fieldScroll = 0
 					return a, nil
 				}
-				a.fieldInput.Blur()
-				a.overlay = overlayNone
+				// Check if any changes were made.
+				if a.fieldChangesExist() {
+					a.overlay = overlayFieldsConfirm
+				} else {
+					a.fieldInput.Blur()
+					a.overlay = overlayNone
+				}
 			default:
 				prev := a.fieldInput.Value()
 				var cmd tea.Cmd
 				a.fieldInput, cmd = a.fieldInput.Update(msg)
 				if a.fieldInput.Value() != prev {
+					a.fieldCursor = 0
 					a.fieldScroll = 0
 				}
 				return a, cmd
+			}
+		}
+		return a, nil
+
+	case overlayFieldsConfirm:
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "y", "Y":
+				a = a.applyFieldChanges()
+				a.fieldInput.Blur()
+				a.overlay = overlayNone
+			default:
+				// Go back to the field list.
+				a.overlay = overlayFields
 			}
 		}
 		return a, nil
@@ -645,6 +688,8 @@ func (a App) View() string {
 		return a.comment.View()
 	case overlayFields:
 		return a.fieldsOverlayView()
+	case overlayFieldsConfirm:
+		return a.fieldsConfirmView()
 	case overlayAddTab:
 		return a.addTabM.View()
 	case overlayEditJQL:
@@ -748,59 +793,196 @@ func (a App) filteredFields() []model.Field {
 	return out
 }
 
+func (a App) fieldPageHeight() int {
+	h := a.height - 13
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
+func (a App) clampFieldScroll() App {
+	pageH := a.fieldPageHeight()
+	if a.fieldCursor < a.fieldScroll {
+		a.fieldScroll = a.fieldCursor
+	}
+	if a.fieldCursor >= a.fieldScroll+pageH {
+		a.fieldScroll = a.fieldCursor - pageH + 1
+	}
+	return a
+}
+
+func (a App) fieldChangesExist() bool {
+	for id, sel := range a.fieldSelected {
+		if sel != a.fieldOriginal[id] {
+			return true
+		}
+	}
+	for id, orig := range a.fieldOriginal {
+		if orig != a.fieldSelected[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// applyFieldChanges rebuilds cfg.Detail.SidebarFields from fieldSelected,
+// persists the config, and rebuilds the detail sidebar.
+func (a App) applyFieldChanges() App {
+	// Preserve existing entries (including custom labels) for kept fields,
+	// then append newly added fields at the end.
+	kept := make([]config.SidebarField, 0, len(a.cfg.Detail.SidebarFields))
+	for _, sf := range a.cfg.Detail.SidebarFields {
+		if a.fieldSelected[sf.Field] {
+			kept = append(kept, sf)
+		}
+	}
+	for _, f := range a.fields {
+		if a.fieldSelected[f.ID] && !a.fieldOriginal[f.ID] {
+			kept = append(kept, config.SidebarField{Field: f.ID})
+		}
+	}
+	a.cfg.Detail.SidebarFields = kept
+
+	if err := config.Save(a.configPath, a.cfg); err != nil {
+		a.statusLine = a.statusLine.SetMessage("sidebar saved (config write failed: "+err.Error()+")", true)
+	} else {
+		a.statusLine = a.statusLine.SetMessage("sidebar fields updated", false)
+	}
+
+	// Rebuild the detail sidebar so the change is visible immediately.
+	a.detail = NewDetail(a.cfg)
+	return a
+}
+
 func (a App) fieldsOverlayView() string {
 	filtered := a.filteredFields()
+	pageH := a.fieldPageHeight()
 
 	overlayW := 60
 	if overlayW > a.width-4 {
 		overlayW = a.width - 4
 	}
 
-	var sb strings.Builder
-	title := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true).
-		Render("All Fields")
-	sb.WriteString(title + "\n")
+	checkedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00cc44")).Bold(true)
+	uncheckedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).Width(22)
+	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	cursorBg := lipgloss.NewStyle().Background(lipgloss.Color("#222255"))
 
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true).
+		Render("Sidebar Fields") + "\n")
 	filterPrompt := lipgloss.NewStyle().Foreground(lipgloss.Color("#5555ff")).Bold(true).Render("/")
 	sb.WriteString(filterPrompt + " " + a.fieldInput.View() + "\n\n")
-
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).Width(24)
-	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-
-	overlayH := a.height - 12
-	if overlayH < 3 {
-		overlayH = 3
-	}
-
-	start := a.fieldScroll
-	if start > len(filtered) {
-		start = len(filtered)
-	}
-	end := start + overlayH
-	if end > len(filtered) {
-		end = len(filtered)
-	}
 
 	if len(filtered) == 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).
 			Italic(true).Render("  no matches\n"))
 	} else {
-		for _, f := range filtered[start:end] {
-			sb.WriteString(nameStyle.Render(f.DisplayName) + "  " + idStyle.Render(f.ID) + "\n")
+		start := a.fieldScroll
+		if start > len(filtered) {
+			start = len(filtered)
 		}
-		if len(filtered) > overlayH {
+		end := start + pageH
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+
+		rowW := overlayW - 6 // account for padding + border
+		for i, f := range filtered[start:end] {
+			abs := start + i
+			var checkbox string
+			if a.fieldSelected[f.ID] {
+				checkbox = checkedStyle.Render("[x]")
+			} else {
+				checkbox = uncheckedStyle.Render("[ ]")
+			}
+			row := checkbox + " " + nameStyle.Render(f.DisplayName) + "  " + idStyle.Render(f.ID)
+			if abs == a.fieldCursor {
+				row = cursorBg.Width(rowW).Render(row)
+			}
+			sb.WriteString(row + "\n")
+		}
+		if len(filtered) > pageH {
 			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).
-				Render(fmt.Sprintf("  %d/%d\n", a.fieldScroll+1, len(filtered))))
+				Render(fmt.Sprintf("  %d/%d\n", a.fieldCursor+1, len(filtered))))
 		}
 	}
 
 	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).
-		Render("↑/↓ scroll · type to filter · Esc close")
+		Render("↑/↓ j/k navigate · Enter toggle · type filter · Esc done")
 	sb.WriteString("\n" + hint)
 
 	overlay := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#5555ff")).
+		Padding(1, 2).
+		Background(lipgloss.Color("#111111")).
+		Width(overlayW).Render(sb.String())
+
+	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, overlay)
+}
+
+func (a App) fieldsConfirmView() string {
+	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00cc44"))
+	removeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff4444"))
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd"))
+
+	// Build a display-name lookup.
+	nameOf := make(map[string]string, len(a.fields))
+	for _, f := range a.fields {
+		nameOf[f.ID] = f.DisplayName
+	}
+
+	var added, removed []string
+	for id, sel := range a.fieldSelected {
+		if sel && !a.fieldOriginal[id] {
+			n := nameOf[id]
+			if n == "" {
+				n = id
+			}
+			added = append(added, n+" ("+id+")")
+		}
+	}
+	for id, orig := range a.fieldOriginal {
+		if orig && !a.fieldSelected[id] {
+			n := nameOf[id]
+			if n == "" {
+				n = id
+			}
+			removed = append(removed, n+" ("+id+")")
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true).
+		Render("Apply sidebar changes?") + "\n\n")
+
+	if len(added) > 0 {
+		sb.WriteString(nameStyle.Render("  Added:") + "\n")
+		for _, n := range added {
+			sb.WriteString(addStyle.Render("    + "+n) + "\n")
+		}
+	}
+	if len(removed) > 0 {
+		sb.WriteString(nameStyle.Render("  Removed:") + "\n")
+		for _, n := range removed {
+			sb.WriteString(removeStyle.Render("    - "+n) + "\n")
+		}
+	}
+
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).
+		Render("\n  Press y to confirm, any other key to go back")
+	sb.WriteString(hint)
+
+	overlayW := 60
+	if overlayW > a.width-4 {
+		overlayW = a.width - 4
+	}
+	overlay := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#ffaa00")).
 		Padding(1, 2).
 		Background(lipgloss.Color("#111111")).
 		Width(overlayW).Render(sb.String())
