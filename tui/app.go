@@ -363,7 +363,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case a.overlay != overlayNone:
 			if a.overlay == overlayTransition || a.overlay == overlayLabels ||
-				a.overlay == overlayComment {
+				a.overlay == overlayComment || a.overlay == overlayFields ||
+				a.overlay == overlayFieldsConfirm {
 				// Let the sub-model handle Esc.
 				return a.forwardToOverlay(msg)
 			}
