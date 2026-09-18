@@ -94,6 +94,10 @@ func (d Detail) SetSize(w, h int, sidebarPct int) Detail {
 	d.vp.Width = mainW
 	d.vp.Height = vpH
 	d.vp.SetContent(d.bodyContent(mainW))
+	// Keep the link cursor visible after every resize/render.
+	if d.bodyTab == bodyTabLinks {
+		d.scrollLinkIntoView()
+	}
 	return d
 }
 
@@ -134,8 +138,6 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 			if d.bodyTab == bodyTabLinks {
 				if d.linkCursor < len(d.issue.Links)-1 {
 					d.linkCursor++
-					d.vp.SetContent(d.bodyContent(d.vp.Width))
-					d.scrollLinkIntoView()
 				}
 			} else {
 				d.vp.LineDown(1)
@@ -145,8 +147,6 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 			if d.bodyTab == bodyTabLinks {
 				if d.linkCursor > 0 {
 					d.linkCursor--
-					d.vp.SetContent(d.bodyContent(d.vp.Width))
-					d.scrollLinkIntoView()
 				}
 			} else {
 				d.vp.LineUp(1)
@@ -174,7 +174,11 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 
 // scrollLinkIntoView adjusts the viewport YOffset so the cursor row is visible.
 // Header is 2 lines (header row + separator), so cursor row is at line linkCursor+2.
+// Must only be called when vp.Height > 0 (i.e. from SetSize, not from Update).
 func (d *Detail) scrollLinkIntoView() {
+	if d.vp.Height <= 0 {
+		return
+	}
 	line := d.linkCursor + 2
 	if line < d.vp.YOffset {
 		d.vp.YOffset = line
