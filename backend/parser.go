@@ -134,6 +134,9 @@ func parseIssueList(data []byte) ([]model.Issue, int, error) {
 		if f.DueDate != nil {
 			iss.DueDate = *f.DueDate
 		}
+		if f.Assignee != nil {
+			iss.Assignee = f.Assignee.DisplayName
+		}
 		iss.Created = formatDate(f.Created)
 		iss.Updated = formatDate(f.Updated)
 		issues = append(issues, iss)

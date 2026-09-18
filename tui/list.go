@@ -55,6 +55,7 @@ var columnDefaultWidths = map[string]int{
 	"priority": 10,
 	"status":   12,
 	"duedate":  12,
+	"assignee": 20,
 	"created":  12,
 	"updated":  12,
 }
@@ -67,6 +68,7 @@ var columnDefaultLabels = map[string]string{
 	"priority": "Priority",
 	"status":   "Status",
 	"duedate":  "Due Date",
+	"assignee": "Assignee",
 	"created":  "Created",
 	"updated":  "Updated",
 }
@@ -302,6 +304,8 @@ func issueFieldValue(iss model.Issue, field string) string {
 		return iss.Status
 	case "duedate":
 		return iss.DueDate
+	case "assignee":
+		return iss.Assignee
 	case "created":
 		return iss.Created
 	case "updated":

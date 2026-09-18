@@ -8,6 +8,7 @@ type Issue struct {
 	Priority string
 	DueDate  string
 	Status   string
+	Assignee string
 	Created  string
 	Updated  string
 }
