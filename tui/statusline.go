@@ -33,13 +33,17 @@ func (s StatusLine) SetWidth(w int) StatusLine {
 }
 
 func (s StatusLine) View() string {
-	if s.message != "" {
-		if s.isError {
-			return statusErrorStyle.Width(s.width).Render("  ✗ " + s.message)
-		}
-		return statusSuccessStyle.Width(s.width).Render("  ✓ " + s.message)
+	hintLine := statusIdleStyle.Width(s.width).Render("  " + s.hint)
+	if s.message == "" {
+		return hintLine
 	}
-	return statusIdleStyle.Width(s.width).Render("  " + s.hint)
+	var msgLine string
+	if s.isError {
+		msgLine = statusErrorStyle.Width(s.width).Render("  ✗ " + s.message)
+	} else {
+		msgLine = statusSuccessStyle.Width(s.width).Render("  ✓ " + s.message)
+	}
+	return msgLine + "\n" + hintLine
 }
 
 // MapCLIError converts common CLI error patterns to human-readable messages.
