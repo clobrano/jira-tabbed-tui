@@ -36,6 +36,10 @@ func resolveJiraCredentials(cfgURL string) (baseURL, email, token string, err er
 	if cfgURL != "" {
 		baseURL = strings.TrimRight(cfgURL, "/")
 	}
+	// Ensure the URL has a scheme so net/http can parse it.
+	if baseURL != "" && !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		baseURL = "https://" + baseURL
+	}
 	if baseURL == "" {
 		err = fmt.Errorf("jira server URL not configured; set backend.url in config or run 'jira init'")
 		return

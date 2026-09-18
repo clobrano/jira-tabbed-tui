@@ -97,7 +97,15 @@ func (m TransitionModel) SetSize(w, h int) TransitionModel {
 }
 
 func (m TransitionModel) Update(msg tea.Msg) (TransitionModel, tea.Cmd) {
-	if m.loading || m.err != nil {
+	if m.loading {
+		return m, nil
+	}
+	if m.err != nil {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			if key.String() == "esc" || key.String() == "q" {
+				return m, func() tea.Msg { return TransitionCancelledMsg{} }
+			}
+		}
 		return m, nil
 	}
 	key, ok := msg.(tea.KeyMsg)
