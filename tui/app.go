@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/clobrano/jira-tabbed-tui/backend"
@@ -79,6 +80,7 @@ type App struct {
 	tabBar       TabBar
 	fields       []model.Field
 	fieldScroll  int
+	fieldInput   textinput.Model
 	width        int
 	height       int
 	globalSpinner spinner.Model
@@ -109,6 +111,10 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 		tabNames[i] = t.name
 	}
 
+	fi := textinput.New()
+	fi.Placeholder = "type to filter…"
+	fi.CharLimit = 64
+
 	gs := spinner.New()
 	gs.Spinner = spinner.Dot
 	gs.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#5555ff"))
@@ -136,6 +142,7 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 		help:          NewHelpOverlay(cfg.Keybindings),
 		statusLine:    StatusLine{},
 		tabBar:        NewTabBar(tabNames),
+		fieldInput:    fi,
 		globalSpinner: gs,
 	}
 }
@@ -249,6 +256,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case FieldsOverlayMsg:
 		a.fields = msg.Fields
 		a.fieldScroll = 0
+		overlayW := 60
+		if overlayW > a.width-4 {
+			overlayW = a.width - 4
+		}
+		a.fieldInput.Width = overlayW - 8
+		a.fieldInput.SetValue("")
+		a.fieldInput.Focus()
 		a.overlay = overlayFields
 		return a, nil
 
@@ -323,7 +337,7 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if a.overlay == overlayNone && a.view == viewList && !a.isFilterActive() {
 			return a, tea.Quit
 		}
-		if a.overlay == overlayHelp || a.overlay == overlayFields {
+		if a.overlay == overlayHelp {
 			a.overlay = overlayNone
 			return a, nil
 		}
@@ -551,16 +565,31 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlayFields:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			switch key.String() {
-			case "j", "down":
-				if a.fieldScroll < len(a.fields)-1 {
+			case "down":
+				filtered := a.filteredFields()
+				if a.fieldScroll < len(filtered)-1 {
 					a.fieldScroll++
 				}
-			case "k", "up":
+			case "up":
 				if a.fieldScroll > 0 {
 					a.fieldScroll--
 				}
-			case "esc", "q":
+			case "esc":
+				if a.fieldInput.Value() != "" {
+					a.fieldInput.SetValue("")
+					a.fieldScroll = 0
+					return a, nil
+				}
+				a.fieldInput.Blur()
 				a.overlay = overlayNone
+			default:
+				prev := a.fieldInput.Value()
+				var cmd tea.Cmd
+				a.fieldInput, cmd = a.fieldInput.Update(msg)
+				if a.fieldInput.Value() != prev {
+					a.fieldScroll = 0
+				}
+				return a, cmd
 			}
 		}
 		return a, nil
@@ -704,35 +733,71 @@ func (a App) detailHint() string {
 		kb.Transition, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
 }
 
+func (a App) filteredFields() []model.Field {
+	q := strings.ToLower(a.fieldInput.Value())
+	if q == "" {
+		return a.fields
+	}
+	out := make([]model.Field, 0, len(a.fields))
+	for _, f := range a.fields {
+		if strings.Contains(strings.ToLower(f.DisplayName), q) ||
+			strings.Contains(strings.ToLower(f.ID), q) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func (a App) fieldsOverlayView() string {
-	var sb strings.Builder
-	title := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true).
-		Render("All Fields (j/k scroll, Esc close)")
-	sb.WriteString(title + "\n\n")
-
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).Width(24)
-	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-
-	overlayH := a.height - 8
-	if overlayH < 5 {
-		overlayH = 5
-	}
-	end := a.fieldScroll + overlayH
-	if end > len(a.fields) {
-		end = len(a.fields)
-	}
-	for _, f := range a.fields[a.fieldScroll:end] {
-		sb.WriteString(nameStyle.Render(f.DisplayName) + "  " + idStyle.Render(f.ID) + "\n")
-	}
-	if len(a.fields) > overlayH {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).
-			Render(fmt.Sprintf("\n  %d/%d", a.fieldScroll+1, len(a.fields))))
-	}
+	filtered := a.filteredFields()
 
 	overlayW := 60
 	if overlayW > a.width-4 {
 		overlayW = a.width - 4
 	}
+
+	var sb strings.Builder
+	title := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true).
+		Render("All Fields")
+	sb.WriteString(title + "\n")
+
+	filterPrompt := lipgloss.NewStyle().Foreground(lipgloss.Color("#5555ff")).Bold(true).Render("/")
+	sb.WriteString(filterPrompt + " " + a.fieldInput.View() + "\n\n")
+
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).Width(24)
+	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+
+	overlayH := a.height - 12
+	if overlayH < 3 {
+		overlayH = 3
+	}
+
+	start := a.fieldScroll
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	end := start + overlayH
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+
+	if len(filtered) == 0 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).
+			Italic(true).Render("  no matches\n"))
+	} else {
+		for _, f := range filtered[start:end] {
+			sb.WriteString(nameStyle.Render(f.DisplayName) + "  " + idStyle.Render(f.ID) + "\n")
+		}
+		if len(filtered) > overlayH {
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).
+				Render(fmt.Sprintf("  %d/%d\n", a.fieldScroll+1, len(filtered))))
+		}
+	}
+
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).
+		Render("↑/↓ scroll · type to filter · Esc close")
+	sb.WriteString("\n" + hint)
+
 	overlay := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#5555ff")).
