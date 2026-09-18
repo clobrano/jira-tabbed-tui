@@ -302,6 +302,13 @@ func AddLabels(r Runner, key string, labels []string) error {
 	return err
 }
 
+// AssignIssue assigns an issue to a user. login accepts email or display name
+// (jira-cli resolves it internally via a user search).
+func AssignIssue(r Runner, key, login string) error {
+	_, err := r.Run("issue", "assign", key, login)
+	return err
+}
+
 // AddComment posts a new comment on an issue.
 func AddComment(r Runner, key, body string) error {
 	_, err := r.Run("issue", "comment", "add", key, body)

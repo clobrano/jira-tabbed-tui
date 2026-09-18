@@ -49,3 +49,10 @@ type Field struct {
 	ID          string
 	DisplayName string
 }
+
+// User is a Jira user returned by the assignable-search API.
+type User struct {
+	AccountID   string
+	DisplayName string
+	Email       string
+}

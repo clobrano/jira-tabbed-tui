@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,4 +94,53 @@ func FetchTransitionsREST(cfgURL, key string) ([]model.Transition, error) {
 	}
 
 	return parseTransitions(body)
+}
+
+// SearchAssignableUsersREST searches for users who can be assigned to issueKey.
+func SearchAssignableUsersREST(cfgURL, issueKey, query string) ([]model.User, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := baseURL + "/rest/api/3/user/assignable/search?issueKey=" +
+		url.QueryEscape(issueKey) + "&query=" + url.QueryEscape(query) + "&maxResults=15"
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(email, token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("searching users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jira API returned %d: %s", resp.StatusCode, body)
+	}
+
+	var raw []struct {
+		AccountID    string `json:"accountId"`
+		DisplayName  string `json:"displayName"`
+		EmailAddress string `json:"emailAddress"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parsing user search: %w", err)
+	}
+	users := make([]model.User, 0, len(raw))
+	for _, u := range raw {
+		users = append(users, model.User{
+			AccountID:   u.AccountID,
+			DisplayName: u.DisplayName,
+			Email:       u.EmailAddress,
+		})
+	}
+	return users, nil
 }

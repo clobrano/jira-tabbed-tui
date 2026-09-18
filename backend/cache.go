@@ -38,6 +38,12 @@ type ChildrenFetchedMsg struct {
 	Err       error
 }
 
+// AssignSearchDoneMsg is sent when an assignable-user search completes.
+type AssignSearchDoneMsg struct {
+	Users []model.User
+	Err   error
+}
+
 // WriteActionDoneMsg is sent after any write action (transition, labels, comment).
 type WriteActionDoneMsg struct {
 	Action  string
@@ -214,6 +220,22 @@ func AddCommentCmd(r Runner, key, body, tabName string) tea.Cmd {
 	return func() tea.Msg {
 		err := AddComment(r, key, body)
 		return WriteActionDoneMsg{Action: "add comment", IssueKey: key, TabName: tabName, Err: err}
+	}
+}
+
+// AssignSearchCmd searches for assignable users and emits AssignSearchDoneMsg.
+func AssignSearchCmd(cfgURL, issueKey, query string) tea.Cmd {
+	return func() tea.Msg {
+		users, err := SearchAssignableUsersREST(cfgURL, issueKey, query)
+		return AssignSearchDoneMsg{Users: users, Err: err}
+	}
+}
+
+// DoAssignCmd assigns the issue and emits WriteActionDoneMsg.
+func DoAssignCmd(r Runner, key, login, displayName, tabName string) tea.Cmd {
+	return func() tea.Msg {
+		err := AssignIssue(r, key, login)
+		return WriteActionDoneMsg{Action: "assign to " + displayName, IssueKey: key, TabName: tabName, Err: err}
 	}
 }
 
