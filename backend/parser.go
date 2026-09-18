@@ -286,11 +286,12 @@ func fieldDisplayName(id string) string {
 	return id
 }
 
-// extractText converts a JSON value (string or ADF document) to plain text.
+// extractText converts a JSON value (string or ADF document) to a styled terminal string.
 func extractText(data json.RawMessage) string {
 	if len(data) == 0 {
 		return ""
 	}
+	// Jira Cloud uses ADF objects; older/simple bodies may be plain strings.
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
 		return s
@@ -299,57 +300,7 @@ func extractText(data json.RawMessage) string {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return string(data)
 	}
-	return adfToText(doc)
-}
-
-// adfToText recursively extracts plain text from an Atlassian Document Format node.
-func adfToText(node map[string]any) string {
-	var sb strings.Builder
-	nodeType, _ := node["type"].(string)
-	attrs, _ := node["attrs"].(map[string]any)
-
-	switch nodeType {
-	case "text":
-		if text, ok := node["text"].(string); ok {
-			sb.WriteString(text)
-		}
-	case "inlineCard":
-		// Jira Smart Link pasted inline — render the bare URL.
-		if url, ok := attrs["url"].(string); ok {
-			sb.WriteString(url)
-		}
-	case "blockCard":
-		if url, ok := attrs["url"].(string); ok {
-			sb.WriteString(url)
-		}
-	case "mention":
-		if text, ok := attrs["text"].(string); ok {
-			sb.WriteString(text)
-		}
-	case "emoji":
-		if text, ok := attrs["text"].(string); ok && text != "" {
-			sb.WriteString(text)
-		} else if shortName, ok := attrs["shortName"].(string); ok {
-			sb.WriteString(shortName)
-		}
-	}
-
-	if content, ok := node["content"].([]any); ok {
-		for _, child := range content {
-			if childMap, ok := child.(map[string]any); ok {
-				sb.WriteString(adfToText(childMap))
-			}
-		}
-	}
-
-	switch nodeType {
-	case "paragraph", "heading", "blockquote", "rule", "blockCard":
-		sb.WriteString("\n")
-	case "hardBreak":
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
+	return renderADFDoc(doc)
 }
 
 func formatDate(s string) string {
