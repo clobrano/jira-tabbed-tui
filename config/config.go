@@ -12,6 +12,7 @@ import (
 type Backend struct {
 	CLI       string   `yaml:"cli"`
 	ExtraArgs []string `yaml:"extra_args"`
+	URL       string   `yaml:"url"` // Jira base URL for browser links, e.g. https://myorg.atlassian.net
 }
 
 type Tab struct {
@@ -70,6 +71,7 @@ func DefaultPath() string {
 // defaultConfigYAML is written to disk when no config file exists.
 const defaultConfigYAML = `backend:
   cli: jira
+  # url: https://myorg.atlassian.net   # base URL for "open in browser"; omit to use 'jira open KEY'
   # extra_args: []
 
 tabs:

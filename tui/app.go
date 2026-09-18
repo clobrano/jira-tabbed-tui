@@ -50,6 +50,12 @@ type FieldsOverlayMsg struct {
 	Fields []model.Field
 }
 
+// browserOpenDoneMsg is sent after the "open in browser" action.
+// Kept separate from WriteActionDoneMsg so it does not trigger a cache refetch.
+type browserOpenDoneMsg struct {
+	err error
+}
+
 // App is the root Bubbletea model.
 type App struct {
 	cfg          config.Config
@@ -188,6 +194,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.transition = a.transition.SetTransitions(msg.Transitions, msg.Err)
 		if msg.Err != nil {
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
+		}
+		return a, nil
+
+	// ── browser open done (no cache refetch) ────────────────────────────────
+	case browserOpenDoneMsg:
+		if msg.err != nil {
+			a.statusLine = a.statusLine.SetMessage("open browser failed: "+msg.err.Error(), true)
+		} else {
+			a.statusLine = a.statusLine.SetMessage("opened in browser", false)
 		}
 		return a, nil
 
@@ -774,19 +789,24 @@ func (a App) confirmDeleteView() string {
 
 func (a App) openBrowserCmd() tea.Cmd {
 	key := a.detail.IssueKey()
+	baseURL := strings.TrimRight(a.cfg.Backend.URL, "/")
+	cli := a.cfg.Backend.CLI
 	return func() tea.Msg {
-		var args []string
-		switch runtime.GOOS {
-		case "darwin":
-			args = []string{"open"}
-		default:
-			args = []string{"xdg-open"}
+		var err error
+		if baseURL != "" {
+			// Use configured base URL + xdg-open / open.
+			url := baseURL + "/browse/" + key
+			switch runtime.GOOS {
+			case "darwin":
+				err = exec.Command("open", url).Start()
+			default:
+				err = exec.Command("xdg-open", url).Start()
+			}
+		} else {
+			// Fall back to the CLI's own open command.
+			err = exec.Command(cli, "open", key).Start()
 		}
-		url := "https://jira.example.com/browse/" + key
-		if err := exec.Command(args[0], url).Start(); err != nil {
-			return backend.WriteActionDoneMsg{Action: "open browser", Err: err}
-		}
-		return backend.WriteActionDoneMsg{Action: "open browser"}
+		return browserOpenDoneMsg{err: err}
 	}
 }
 
