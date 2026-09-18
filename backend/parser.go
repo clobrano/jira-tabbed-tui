@@ -306,10 +306,31 @@ func extractText(data json.RawMessage) string {
 func adfToText(node map[string]any) string {
 	var sb strings.Builder
 	nodeType, _ := node["type"].(string)
+	attrs, _ := node["attrs"].(map[string]any)
 
-	if nodeType == "text" {
+	switch nodeType {
+	case "text":
 		if text, ok := node["text"].(string); ok {
 			sb.WriteString(text)
+		}
+	case "inlineCard":
+		// Jira Smart Link pasted inline — render the bare URL.
+		if url, ok := attrs["url"].(string); ok {
+			sb.WriteString(url)
+		}
+	case "blockCard":
+		if url, ok := attrs["url"].(string); ok {
+			sb.WriteString(url)
+		}
+	case "mention":
+		if text, ok := attrs["text"].(string); ok {
+			sb.WriteString(text)
+		}
+	case "emoji":
+		if text, ok := attrs["text"].(string); ok && text != "" {
+			sb.WriteString(text)
+		} else if shortName, ok := attrs["shortName"].(string); ok {
+			sb.WriteString(shortName)
 		}
 	}
 
@@ -322,12 +343,10 @@ func adfToText(node map[string]any) string {
 	}
 
 	switch nodeType {
-	case "paragraph", "heading", "blockquote", "rule":
+	case "paragraph", "heading", "blockquote", "rule", "blockCard":
 		sb.WriteString("\n")
 	case "hardBreak":
 		sb.WriteString("\n")
-	case "listItem":
-		// bullet is prepended by the parent via content iteration
 	}
 
 	return sb.String()
