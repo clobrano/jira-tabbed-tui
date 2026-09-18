@@ -271,7 +271,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for k, v := range sel {
 			a.fieldSelected[k] = v
 		}
-		overlayW := 60
+		overlayW := 76
 		if overlayW > a.width-4 {
 			overlayW = a.width - 4
 		}
@@ -860,15 +860,24 @@ func (a App) fieldsOverlayView() string {
 	filtered := a.filteredFields()
 	pageH := a.fieldPageHeight()
 
-	overlayW := 60
+	overlayW := 76
 	if overlayW > a.width-4 {
 		overlayW = a.width - 4
+	}
+	// inner = overlayW minus border(2) and padding(2*2)
+	innerW := overlayW - 6
+	// fixed columns: checkbox(4) + name(18) + gap(2) + id(14) + gap(2) = 40
+	const fixedCols = 40
+	valueW := innerW - fixedCols
+	if valueW < 4 {
+		valueW = 4
 	}
 
 	checkedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00cc44")).Bold(true)
 	uncheckedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).Width(22)
-	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#dddddd")).Width(18)
+	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Width(14)
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaaaff")).Italic(true)
 	cursorBg := lipgloss.NewStyle().Background(lipgloss.Color("#222255"))
 
 	var sb strings.Builder
@@ -890,7 +899,7 @@ func (a App) fieldsOverlayView() string {
 			end = len(filtered)
 		}
 
-		rowW := overlayW - 6 // account for padding + border
+		rowW := innerW
 		for i, f := range filtered[start:end] {
 			abs := start + i
 			var checkbox string
@@ -899,7 +908,14 @@ func (a App) fieldsOverlayView() string {
 			} else {
 				checkbox = uncheckedStyle.Render("[ ]")
 			}
-			row := checkbox + " " + nameStyle.Render(f.DisplayName) + "  " + idStyle.Render(f.ID)
+			val := fieldValue(a.detail.issue, f.ID)
+			if len(val) > valueW {
+				val = val[:valueW-1] + "…"
+			}
+			row := checkbox + " " +
+				nameStyle.Render(f.DisplayName) + "  " +
+				idStyle.Render(f.ID) + "  " +
+				valueStyle.Render(val)
 			if abs == a.fieldCursor {
 				row = cursorBg.Width(rowW).Render(row)
 			}
