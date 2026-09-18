@@ -569,7 +569,7 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, a.cache.FetchDetailCmd(a.runner, key)
 		}
 
-	case "ctrl+i":
+	case "ctrl+i", "tab":
 		if a.detailHistIdx < len(a.detailHistory)-1 {
 			a.detailHistIdx++
 			key := a.detailHistory[a.detailHistIdx]
