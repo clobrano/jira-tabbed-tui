@@ -93,7 +93,7 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 	tabs = append(tabs, tabState{
 		name:     "Search",
 		isSearch: true,
-		list:     NewIssueList(),
+		list:     NewIssueList().SetLoading(false),
 		search:   NewSearchInput(),
 	})
 	for _, t := range cfg.Tabs {
@@ -118,6 +118,9 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 	if len(tabs) > 1 {
 		initialTab = 1
 		tabs[1].list = tabs[1].list.SetLoading(true)
+	} else {
+		// Only the Search tab exists; focus the JQL input immediately.
+		tabs[0].search = tabs[0].search.Focus()
 	}
 
 	return App{
@@ -375,15 +378,27 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	tab := &a.tabs[a.activeTab]
 
-	// Search tab input forwarding.
+	// Search tab handling.
 	if tab.isSearch {
 		switch msg.String() {
 		case "ctrl+c":
 			return a, tea.Quit
+		case "Q":
+			// Refocus the JQL input from the list.
+			if !tab.search.IsFocused() {
+				tab.search = tab.search.Focus()
+				return a, nil
+			}
+		case "tab", "shift+tab":
+			// Allow tab switching even when JQL input is focused; fall through.
+		default:
+			if tab.search.IsFocused() {
+				var cmd tea.Cmd
+				tab.search, cmd = tab.search.Update(msg)
+				return a, cmd
+			}
 		}
-		var cmd tea.Cmd
-		tab.search, cmd = tab.search.Update(msg)
-		return a, cmd
+		// If list has focus, fall through to normal list key handling below.
 	}
 
 	// When fuzzy filter input is active, forward all keys to it.
@@ -619,7 +634,7 @@ func (a App) View() string {
 func (a App) listView() string {
 	tab := a.tabs[a.activeTab]
 	tabBarView := a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
-	statusView := a.statusLine.SetWidth(a.width).View()
+	statusView := a.statusLine.SetHint(a.listHint()).SetWidth(a.width).View()
 
 	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView) - 1
 	if contentH < 1 {
@@ -629,12 +644,17 @@ func (a App) listView() string {
 	var content string
 	if tab.isSearch {
 		searchView := tab.search.SetWidth(a.width).View()
-		listH := contentH - lipgloss.Height(searchView)
-		if listH < 1 {
-			listH = 1
+		if tab.search.Query() == "" {
+			// No query submitted yet — show only the input bar.
+			content = searchView
+		} else {
+			listH := contentH - lipgloss.Height(searchView)
+			if listH < 1 {
+				listH = 1
+			}
+			tab.list = tab.list.SetSize(a.width, listH)
+			content = searchView + "\n" + tab.list.View()
 		}
-		tab.list = tab.list.SetSize(a.width, listH)
-		content = searchView + "\n" + tab.list.View()
 	} else {
 		tab.list = tab.list.SetSize(a.width, contentH)
 		content = tab.list.View()
@@ -647,23 +667,45 @@ func (a App) listView() string {
 	)
 }
 
+func (a App) listHint() string {
+	if a.activeTab >= len(a.tabs) {
+		return ""
+	}
+	tab := a.tabs[a.activeTab]
+	if tab.isSearch {
+		if tab.search.IsFocused() {
+			return "Enter run JQL · Tab/←→ switch tabs · ? help · q quit"
+		}
+		return "j/k navigate · Enter open · Q edit JQL · Tab/←→ tabs · ? help · q quit"
+	}
+	if tab.list.IsFilterActive() {
+		return "type to filter · Enter confirm · Esc clear"
+	}
+	if tab.list.IsFilterApplied() {
+		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
+	}
+	return "j/k navigate · Enter open · / filter · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit"
+}
+
 func (a App) detailView() string {
 	tabBarView := a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
-	statusView := a.statusLine.SetWidth(a.width).View()
-	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView) - 1
+	statusView := a.statusLine.SetHint(a.detailHint()).SetWidth(a.width).View()
+	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView)
 	if contentH < 1 {
 		contentH = 1
 	}
 	d := a.detail.SetSize(a.width, contentH, a.cfg.Detail.SidebarWidth)
-	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).
-		Render("  ← → body tabs  Esc back  ? help")
-
 	return lipgloss.JoinVertical(lipgloss.Left,
 		tabBarView,
 		d.View(),
-		hint,
 		statusView,
 	)
+}
+
+func (a App) detailHint() string {
+	kb := a.cfg.Keybindings
+	return fmt.Sprintf("←/→ body · %s status · %s labels · %s comment · %s browser · F fields · Esc back · ? help",
+		kb.Transition, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
 }
 
 func (a App) fieldsOverlayView() string {
@@ -723,7 +765,10 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 	a.activeTab = idx
 	tab := a.tabs[idx]
 	if tab.isSearch {
-		a.tabs[idx].search = tab.search.Focus()
+		// Only pull focus to the JQL bar when no query has been run yet.
+		if tab.search.Query() == "" {
+			a.tabs[idx].search = tab.search.Focus()
+		}
 		return a, nil
 	}
 	a.tabs[idx].list = tab.list.SetLoading(true)

@@ -6,17 +6,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	searchPromptStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#aaaaaa")).
-				Padding(1, 2)
-
-	searchInputStyle = lipgloss.NewStyle().
-				Border(lipgloss.NormalBorder()).
-				BorderForeground(lipgloss.Color("#5555ff")).
-				Padding(0, 1).
-				Margin(1, 2)
-)
+var searchInputStyle = lipgloss.NewStyle().
+	Border(lipgloss.NormalBorder()).
+	BorderForeground(lipgloss.Color("#5555ff")).
+	Padding(0, 1).
+	Margin(1, 2)
 
 // SearchRunMsg is sent when the user submits a JQL query in the Search tab.
 type SearchRunMsg struct {
@@ -25,10 +19,9 @@ type SearchRunMsg struct {
 
 // SearchInput manages the JQL input in the Search tab.
 type SearchInput struct {
-	input    textinput.Model
-	query    string // last submitted query, persists for the session
-	searched bool   // whether a query has been run
-	width    int
+	input textinput.Model
+	query string // last submitted query
+	width int
 }
 
 func NewSearchInput() SearchInput {
@@ -49,6 +42,10 @@ func (s SearchInput) Blur() SearchInput {
 	return s
 }
 
+func (s SearchInput) IsFocused() bool { return s.input.Focused() }
+
+func (s SearchInput) Query() string { return s.query }
+
 func (s SearchInput) SetWidth(w int) SearchInput {
 	s.width = w
 	inputW := w - 8
@@ -59,14 +56,12 @@ func (s SearchInput) SetWidth(w int) SearchInput {
 	return s
 }
 
-func (s SearchInput) Query() string { return s.query }
-
 func (s SearchInput) Update(msg tea.Msg) (SearchInput, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEnter {
 		q := s.input.Value()
 		if q != "" {
 			s.query = q
-			s.searched = true
+			s.input.Blur() // shift focus to list
 			return s, func() tea.Msg { return SearchRunMsg{Query: q} }
 		}
 	}
@@ -76,9 +71,5 @@ func (s SearchInput) Update(msg tea.Msg) (SearchInput, tea.Cmd) {
 }
 
 func (s SearchInput) View() string {
-	if !s.searched && s.query == "" {
-		return searchPromptStyle.Render("Enter JQL and press Enter") + "\n" +
-			searchInputStyle.Render(s.input.View())
-	}
 	return searchInputStyle.Render(s.input.View())
 }

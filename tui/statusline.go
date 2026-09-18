@@ -5,13 +5,14 @@ import "github.com/charmbracelet/lipgloss"
 var (
 	statusSuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00cc44")).Bold(true)
 	statusErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff4444")).Bold(true)
-	statusIdleStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	statusIdleStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 )
 
-// StatusLine renders the last CLI operation result below the tab bar.
+// StatusLine renders the last CLI operation result (or a context hint when idle).
 type StatusLine struct {
 	message string
 	isError bool
+	hint    string
 	width   int
 }
 
@@ -21,19 +22,24 @@ func (s StatusLine) SetMessage(msg string, isError bool) StatusLine {
 	return s
 }
 
+func (s StatusLine) SetHint(hint string) StatusLine {
+	s.hint = hint
+	return s
+}
+
 func (s StatusLine) SetWidth(w int) StatusLine {
 	s.width = w
 	return s
 }
 
 func (s StatusLine) View() string {
-	if s.message == "" {
-		return statusIdleStyle.Width(s.width).Render("  Ready")
+	if s.message != "" {
+		if s.isError {
+			return statusErrorStyle.Width(s.width).Render("  ✗ " + s.message)
+		}
+		return statusSuccessStyle.Width(s.width).Render("  ✓ " + s.message)
 	}
-	if s.isError {
-		return statusErrorStyle.Width(s.width).Render("  ✗ " + s.message)
-	}
-	return statusSuccessStyle.Width(s.width).Render("  ✓ " + s.message)
+	return statusIdleStyle.Width(s.width).Render("  " + s.hint)
 }
 
 // MapCLIError converts common CLI error patterns to human-readable messages.
