@@ -304,11 +304,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a.forwardToOverlay(msg)
 }
 
+// isFilterActive reports whether the fuzzy filter input bar is open on the active list tab.
+func (a App) isFilterActive() bool {
+	if a.view != viewList || a.activeTab >= len(a.tabs) {
+		return false
+	}
+	tab := a.tabs[a.activeTab]
+	return !tab.isSearch && tab.list.IsFilterActive()
+}
+
 func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Global quit.
+	// Global quit — not when filter input is open.
 	switch msg.String() {
 	case "ctrl+c", "q":
-		if a.overlay == overlayNone && a.view == viewList {
+		if a.overlay == overlayNone && a.view == viewList && !a.isFilterActive() {
 			return a, tea.Quit
 		}
 		if a.overlay == overlayHelp || a.overlay == overlayFields {
@@ -331,6 +340,12 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case a.view == viewDetail:
 			a.view = viewList
 			return a, nil
+		case a.view == viewList && a.activeTab < len(a.tabs):
+			tab := &a.tabs[a.activeTab]
+			if !tab.isSearch && (tab.list.IsFilterActive() || tab.list.IsFilterApplied()) {
+				tab.list = tab.list.ClearFilter()
+				return a, nil
+			}
 		}
 		return a, nil
 	}
@@ -340,8 +355,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.forwardToOverlay(msg)
 	}
 
-	// Help toggle.
-	if msg.String() == a.cfg.Keybindings.Help {
+	// Help toggle — skip when filter input is open.
+	if !a.isFilterActive() && msg.String() == a.cfg.Keybindings.Help {
 		if a.overlay == overlayHelp {
 			a.overlay = overlayNone
 		} else {
@@ -371,12 +386,32 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 
+	// When fuzzy filter input is active, forward all keys to it.
+	if tab.list.IsFilterActive() {
+		switch msg.String() {
+		case "enter":
+			tab.list = tab.list.DeactivateFilter()
+		case "esc":
+			// Handled upstream in handleKey; shouldn't reach here, but guard just in case.
+			tab.list = tab.list.ClearFilter()
+		default:
+			var cmd tea.Cmd
+			tab.list, cmd = tab.list.UpdateFilter(msg)
+			return a, cmd
+		}
+		return a, nil
+	}
+
 	switch msg.String() {
+	case "/":
+		tab.list = tab.list.ActivateFilter()
+		return a, nil
+
 	case "j", "down":
 		if tab.list.AtBottom() && tab.list.HasMore() && !tab.list.loadingMore {
 			tab.list = tab.list.SetLoadingMore(true)
 			return a, a.cache.FetchListPageCmd(
-				a.runner, a.activeTab, tab.name, tab.jql, len(tab.list.issues))
+				a.runner, a.activeTab, tab.name, tab.jql, tab.list.LoadedCount())
 		}
 		tab.list = tab.list.MoveDown()
 

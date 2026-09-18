@@ -74,6 +74,7 @@ func (h HelpOverlay) View() string {
 		{"+", "Add new tab"},
 		{"-", "Delete current tab"},
 		{"Q", "Edit tab JQL (temporary)"},
+		{"/", "Fuzzy-filter loaded rows"},
 		{"Enter", "Open issue detail"},
 		{h.kb.ForceRefresh, "Refresh current tab"},
 		{h.kb.Help + " / Esc", "Close this overlay"},
