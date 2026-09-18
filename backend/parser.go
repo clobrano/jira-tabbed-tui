@@ -291,11 +291,13 @@ func ApplyTransition(r Runner, key, transitionName string) error {
 	return err
 }
 
-// AddLabels adds one or more labels to an issue.
+// AddLabels adds one or more labels to an issue via jira issue edit --label.
 func AddLabels(r Runner, key string, labels []string) error {
-	args := make([]string, 0, 3+len(labels))
-	args = append(args, "issue", "label", "add", key)
-	args = append(args, labels...)
+	args := make([]string, 0, 2+2*len(labels))
+	args = append(args, "issue", "edit", key)
+	for _, l := range labels {
+		args = append(args, "--label", l)
+	}
 	_, err := r.Run(args...)
 	return err
 }

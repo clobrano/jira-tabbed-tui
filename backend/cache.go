@@ -184,10 +184,11 @@ func FetchChildrenCmd(r Runner, key string) tea.Cmd {
 	}
 }
 
-// FetchTransitionsCmd fetches available transitions for an issue.
-func FetchTransitionsCmd(r Runner, key string) tea.Cmd {
+// FetchTransitionsCmd fetches available transitions for an issue via the Jira REST API.
+// cfgURL is backend.url from the app config (may be empty; falls back to jira-cli's config).
+func FetchTransitionsCmd(r Runner, cfgURL, key string) tea.Cmd {
 	return func() tea.Msg {
-		ts, err := FetchTransitions(r, key)
+		ts, err := FetchTransitionsREST(cfgURL, key)
 		return TransitionsFetchedMsg{Transitions: ts, Err: err}
 	}
 }

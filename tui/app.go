@@ -587,7 +587,7 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		key := a.detail.IssueKey()
 		a.transition = actions.NewTransitionModel(key).SetSize(a.width, a.height)
 		a.overlay = overlayTransition
-		return a, backend.FetchTransitionsCmd(a.runner, key)
+		return a, backend.FetchTransitionsCmd(a.runner, a.cfg.Backend.URL, key)
 
 	case a.cfg.Keybindings.AddLabels:
 		key := a.detail.IssueKey()
