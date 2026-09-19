@@ -9,16 +9,11 @@ common write actions — transition, assign, label, comment — right from the
 keyboard. It rides on top of the [`jira` CLI][jira-cli] for reads and writes and
 talks to the Jira REST API directly for the few things the CLI can't do.
 
-```
-┌ Assigned ─┬ In Progress ─┬ Review ─────────────────────────────────┐
-│ ID        TYPE   SUMMARY                              STATUS        │
-│ PROJ-142  Bug    Login page flickers on Safari        In Progress   │
-│ PROJ-138  Task   Add pagination to search results     To Do         │
-│ PROJ-131  Story  Export dashboard as CSV              In Review     │
-│ ...                                                                 │
-└────────────────────────────────────────────────────────────────────┘
- j/k move · Enter open · m status · a assign · / filter · ? help
-```
+![jira-tabbed-tui demo](demo/demo.gif)
+
+> The clip above is recorded from the real TUI driven by a mock backend — no
+> live Jira needed. Regenerate it any time with `vhs demo/demo.tape`
+> (see [`demo/`](demo/)).
 
 ---
 
