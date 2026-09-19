@@ -1,0 +1,30 @@
+# Config used only for recording the demo GIF (see demo/README.md).
+# It points the TUI at the mock `jira` backend in demo/bin.
+backend:
+  cli: jira
+  url: https://demo.atlassian.net
+
+tabs:
+  - name: Assigned
+    jql: assignee = currentUser()
+  - name: In Progress
+    jql: assignee = currentUser() AND status = "In Progress"
+  - name: Review
+    jql: assignee = currentUser() AND status = "In Review"
+
+list:
+  columns:
+    - field: key
+      label: ID
+    - field: type
+    - field: summary
+    - field: status
+
+detail:
+  sidebar_width: 33
+  sidebar_fields:
+    - field: assignee
+    - field: reporter
+    - field: labels
+    - field: duedate
+      label: Due

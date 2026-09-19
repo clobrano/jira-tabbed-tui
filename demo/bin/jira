@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+#
+# Mock "jira" CLI for the jira-tabbed-tui demo.
+#
+# jira-tabbed-tui shells out to the `jira` binary (ankitpokhrel/jira-cli) for
+# reads and writes. This script stands in for that binary and returns canned,
+# deterministic JSON, so the demo GIF can be recorded with no live Jira instance,
+# no network, and no credentials. It implements just enough of the CLI surface
+# that the TUI exercises: `me`, `issue list --raw`, and `issue view --raw`.
+#
+# It is NOT a real Jira client — do not put it on your PATH for actual use.
+
+set -euo pipefail
+
+# Join all args into one string so we can pattern-match the subcommand + flags.
+args="$*"
+
+# ---- auth check -------------------------------------------------------------
+# The TUI runs `jira me` at startup to verify authentication.
+if [[ "$args" == me* ]]; then
+  echo "demo.user@example.com"
+  exit 0
+fi
+
+# ---- issue view KEY --raw ---------------------------------------------------
+# Full detail for a single issue: description, comments, subtasks, links.
+if [[ "$args" == issue\ view* ]]; then
+  # Args are: issue view KEY --raw  -> the key is the 3rd positional arg.
+  key="${3:-PLATFORM-142}"
+  cat <<JSON
+{
+  "key": "$key",
+  "fields": {
+    "summary": "Login page flickers on Safari during OAuth redirect",
+    "issuetype": { "name": "Bug" },
+    "priority": { "name": "High" },
+    "status": { "name": "In Progress" },
+    "assignee": { "displayName": "Dana Reyes" },
+    "reporter": { "displayName": "Sam Okafor" },
+    "labels": ["frontend", "safari", "oauth"],
+    "duedate": "2026-09-30",
+    "created": "2026-09-10T09:12:00.000+0000",
+    "updated": "2026-09-18T16:40:00.000+0000",
+    "description": "Users on Safari 17 see a brief white flash and a double-render of the login form when returning from the OAuth provider.\n\nSteps to reproduce:\n1. Open the app in Safari 17\n2. Click \"Sign in with SSO\"\n3. Complete the provider prompt\n4. Observe the flicker as the app rehydrates\n\nLikely a race between the session bootstrap and the first paint. Chrome and Firefox are unaffected.",
+    "comment": {
+      "comments": [
+        {
+          "author": { "displayName": "Dana Reyes" },
+          "created": "2026-09-18T16:40:00.000+0000",
+          "body": "Reproduced. Looks like we mount the form before the session cookie is read back. Testing a guard now."
+        },
+        {
+          "author": { "displayName": "Sam Okafor" },
+          "created": "2026-09-11T08:05:00.000+0000",
+          "body": "Only happens on the OAuth return path, not on a cold load. Adding the safari label."
+        }
+      ]
+    },
+    "subtasks": [
+      {
+        "key": "PLATFORM-151",
+        "fields": { "summary": "Add session-ready guard before first paint", "status": { "name": "In Progress" } }
+      },
+      {
+        "key": "PLATFORM-152",
+        "fields": { "summary": "Add Safari smoke test to CI", "status": { "name": "To Do" } }
+      }
+    ],
+    "issuelinks": [
+      {
+        "type": { "inward": "is blocked by", "outward": "blocks" },
+        "outwardIssue": {
+          "key": "PLATFORM-98",
+          "fields": { "summary": "Migrate auth to new session service", "status": { "name": "Done" } }
+        }
+      }
+    ]
+  }
+}
+JSON
+  exit 0
+fi
+
+# ---- issue list --raw -q <jql> [--paginate S:N] -----------------------------
+# The board rows. We return a different slice depending on the tab's JQL so the
+# tabs feel distinct. jira-cli --raw returns the API wrapper object.
+if [[ "$args" == issue\ list* ]]; then
+
+  # Child-issue lookup used by the detail view (parent = KEY).
+  if [[ "$args" == *"parent ="* ]]; then
+    cat <<'JSON'
+{ "total": 2, "issues": [
+  { "key": "PLATFORM-151", "fields": { "summary": "Add session-ready guard before first paint", "issuetype": {"name":"Sub-task"}, "priority": {"name":"High"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-12T10:00:00.000+0000", "updated":"2026-09-18T12:00:00.000+0000", "labels":[] } },
+  { "key": "PLATFORM-152", "fields": { "summary": "Add Safari smoke test to CI", "issuetype": {"name":"Sub-task"}, "priority": {"name":"Medium"}, "status": {"name":"To Do"}, "assignee": null, "created":"2026-09-12T10:05:00.000+0000", "updated":"2026-09-12T10:05:00.000+0000", "labels":[] } }
+]}
+JSON
+    exit 0
+  fi
+
+  # "In Progress" tab.
+  if [[ "$args" == *"In Progress"* ]]; then
+    cat <<'JSON'
+{ "total": 3, "issues": [
+  { "key": "PLATFORM-142", "fields": { "summary": "Login page flickers on Safari during OAuth redirect", "issuetype": {"name":"Bug"}, "priority": {"name":"High"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "duedate":"2026-09-30", "created":"2026-09-10T09:12:00.000+0000", "updated":"2026-09-18T16:40:00.000+0000", "labels":["frontend","safari"] } },
+  { "key": "PLATFORM-140", "fields": { "summary": "Rate limiter drops burst traffic under 200ms", "issuetype": {"name":"Bug"}, "priority": {"name":"High"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-08T14:00:00.000+0000", "updated":"2026-09-17T11:20:00.000+0000", "labels":["backend"] } },
+  { "key": "PLATFORM-133", "fields": { "summary": "Refactor config loader to support env overrides", "issuetype": {"name":"Task"}, "priority": {"name":"Medium"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-05T09:00:00.000+0000", "updated":"2026-09-16T09:00:00.000+0000", "labels":["config"] } }
+]}
+JSON
+    exit 0
+  fi
+
+  # "Review" tab.
+  if [[ "$args" == *"Review"* || "$args" == *"review"* ]]; then
+    cat <<'JSON'
+{ "total": 2, "issues": [
+  { "key": "PLATFORM-131", "fields": { "summary": "Export dashboard as CSV", "issuetype": {"name":"Story"}, "priority": {"name":"Medium"}, "status": {"name":"In Review"}, "assignee": {"displayName":"Priya Nair"}, "created":"2026-09-03T09:00:00.000+0000", "updated":"2026-09-18T08:30:00.000+0000", "labels":["reporting"] } },
+  { "key": "PLATFORM-127", "fields": { "summary": "Tighten JWT expiry validation", "issuetype": {"name":"Bug"}, "priority": {"name":"Highest"}, "status": {"name":"In Review"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-01T09:00:00.000+0000", "updated":"2026-09-17T15:00:00.000+0000", "labels":["security","backend"] } }
+]}
+JSON
+    exit 0
+  fi
+
+  # Default: the "Assigned" tab (everything on my plate).
+  cat <<'JSON'
+{ "total": 6, "issues": [
+  { "key": "PLATFORM-142", "fields": { "summary": "Login page flickers on Safari during OAuth redirect", "issuetype": {"name":"Bug"}, "priority": {"name":"High"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "duedate":"2026-09-30", "created":"2026-09-10T09:12:00.000+0000", "updated":"2026-09-18T16:40:00.000+0000", "labels":["frontend","safari"] } },
+  { "key": "PLATFORM-140", "fields": { "summary": "Rate limiter drops burst traffic under 200ms", "issuetype": {"name":"Bug"}, "priority": {"name":"High"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-08T14:00:00.000+0000", "updated":"2026-09-17T11:20:00.000+0000", "labels":["backend"] } },
+  { "key": "PLATFORM-138", "fields": { "summary": "Add pagination to search results", "issuetype": {"name":"Task"}, "priority": {"name":"Medium"}, "status": {"name":"To Do"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-07T09:00:00.000+0000", "updated":"2026-09-15T09:00:00.000+0000", "labels":["search"] } },
+  { "key": "PLATFORM-133", "fields": { "summary": "Refactor config loader to support env overrides", "issuetype": {"name":"Task"}, "priority": {"name":"Medium"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-05T09:00:00.000+0000", "updated":"2026-09-16T09:00:00.000+0000", "labels":["config"] } },
+  { "key": "PLATFORM-131", "fields": { "summary": "Export dashboard as CSV", "issuetype": {"name":"Story"}, "priority": {"name":"Medium"}, "status": {"name":"In Review"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-03T09:00:00.000+0000", "updated":"2026-09-18T08:30:00.000+0000", "labels":["reporting"] } },
+  { "key": "PLATFORM-127", "fields": { "summary": "Tighten JWT expiry validation", "issuetype": {"name":"Bug"}, "priority": {"name":"Highest"}, "status": {"name":"To Do"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-01T09:00:00.000+0000", "updated":"2026-09-14T15:00:00.000+0000", "labels":["security"] } }
+]}
+JSON
+  exit 0
+fi
+
+# Anything else (transitions, edit, assign, comment, ...) is a no-op success so
+# the demo never errors out.
+exit 0
