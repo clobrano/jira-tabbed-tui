@@ -99,6 +99,22 @@ type rawComment struct {
 	Body    json.RawMessage                                   `json:"body"`
 }
 
+func parseFieldMap(data json.RawMessage) map[string]any {
+	var rawMap map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rawMap); err != nil {
+		return make(map[string]any)
+	}
+
+	fieldMap := make(map[string]any, len(rawMap))
+	for k, v := range rawMap {
+		var val any
+		if err := json.Unmarshal(v, &val); err == nil {
+			fieldMap[k] = val
+		}
+	}
+	return fieldMap
+}
+
 func parseIssueList(data []byte) ([]model.Issue, int, error) {
 	// jira-cli --raw can return either the Jira API wrapper object
 	// {"total":N,"issues":[...]} or a bare array [...].
@@ -130,6 +146,7 @@ func parseIssueList(data []byte) ([]model.Issue, int, error) {
 			Summary:  f.Summary,
 			Priority: f.Priority.Name,
 			Status:   f.Status.Name,
+			Fields:   parseFieldMap(raw.Fields),
 		}
 		if f.DueDate != nil {
 			iss.DueDate = *f.DueDate
@@ -163,18 +180,8 @@ func parseIssueDetail(data []byte) (model.IssueDetail, error) {
 		return model.IssueDetail{}, fmt.Errorf("parsing issue fields: %w", err)
 	}
 
-	// Collect all fields into a generic map for sidebar / discovery.
-	var rawMap map[string]json.RawMessage
-	if err := json.Unmarshal(raw.Fields, &rawMap); err != nil {
-		rawMap = make(map[string]json.RawMessage)
-	}
-	fieldMap := make(map[string]any, len(rawMap))
-	for k, v := range rawMap {
-		var val any
-		if err := json.Unmarshal(v, &val); err == nil {
-			fieldMap[k] = val
-		}
-	}
+	// Collect all fields into a generic map for list columns, sidebar, and discovery.
+	fieldMap := parseFieldMap(raw.Fields)
 
 	detail := model.IssueDetail{
 		Issue: model.Issue{
@@ -183,8 +190,8 @@ func parseIssueDetail(data []byte) (model.IssueDetail, error) {
 			Summary:  f.Summary,
 			Priority: f.Priority.Name,
 			Status:   f.Status.Name,
+			Fields:   fieldMap,
 		},
-		Fields: fieldMap,
 	}
 	if f.DueDate != nil {
 		detail.DueDate = *f.DueDate

@@ -98,6 +98,10 @@ func fieldValue(detail model.IssueDetail, id string) string {
 	if !ok {
 		return ""
 	}
+	return formatFieldValue(val)
+}
+
+func formatFieldValue(val any) string {
 	switch v := val.(type) {
 	case string:
 		return v

@@ -10,7 +10,9 @@
         "issuetype": {"name": "Bug"},
         "priority": {"name": "High"},
         "duedate": "2026-10-01",
-        "status": {"name": "In Progress"}
+        "status": {"name": "In Progress"},
+        "fixVersions": [{"id": "10001", "name": "4.18"}],
+        "customfield_10020": "Sprint 5"
       }
     },
     {

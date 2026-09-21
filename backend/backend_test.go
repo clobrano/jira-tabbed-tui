@@ -49,6 +49,10 @@ func TestFetchIssueList(t *testing.T) {
 	if issues[0].DueDate != "2026-10-01" {
 		t.Errorf("expected duedate 2026-10-01, got %q", issues[0].DueDate)
 	}
+	fixVersions, ok := issues[0].Fields["fixVersions"].([]any)
+	if !ok || len(fixVersions) != 1 {
+		t.Fatalf("expected one raw fixVersions value, got %#v", issues[0].Fields["fixVersions"])
+	}
 	if issues[1].DueDate != "" {
 		t.Errorf("expected empty duedate for second issue, got %q", issues[1].DueDate)
 	}

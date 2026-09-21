@@ -1,6 +1,7 @@
 package model
 
-// Issue holds the fields shown in the tab list view.
+// Issue holds the fields shown in the tab list view and the raw Jira fields
+// needed by configured columns.
 type Issue struct {
 	Key      string
 	Type     string
@@ -11,6 +12,7 @@ type Issue struct {
 	Assignee string
 	Created  string
 	Updated  string
+	Fields   map[string]any
 }
 
 // IssueDetail embeds Issue and adds description, comments, links, and all raw fields.
@@ -19,7 +21,6 @@ type IssueDetail struct {
 	Description string
 	Comments    []Comment
 	Links       []IssueLink
-	Fields      map[string]any
 }
 
 // IssueLink is a single Jira issue link (e.g. "blocks", "is blocked by", "relates to").

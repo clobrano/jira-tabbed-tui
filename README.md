@@ -134,8 +134,10 @@ tabs:
     jql: assignee = currentUser() AND status = "In Progress"
 
 list:
-  # Available fields: key, type, summary, priority, status, assignee,
-  #                   duedate, created, updated
+  # Built-in fields: key, type, summary, priority, status, assignee,
+  #                  duedate, created, updated
+  # Any field returned by Jira is also supported, including fixVersions,
+  # components, and customfield_* values.
   # `label` overrides the column header; `width` fixes the width in chars.
   # Omit `width` on exactly one column to let it expand and fill the row.
   columns:

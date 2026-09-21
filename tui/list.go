@@ -311,6 +311,9 @@ func issueFieldValue(iss model.Issue, field string) string {
 	case "updated":
 		return iss.Updated
 	}
+	if val, ok := iss.Fields[field]; ok {
+		return formatFieldValue(val)
+	}
 	return ""
 }
 
