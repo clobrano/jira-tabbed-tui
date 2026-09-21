@@ -130,6 +130,13 @@ backend:
 tabs:
   - name: Assigned
     jql: assignee = currentUser()
+    # sort: priority   # initial sort field (key, priority, status, assignee, duedate, …)
+    # sort_asc: false  # true = ascending, false = descending (default)
+    # columns:         # overrides list.columns for this tab only
+    #   - field: key
+    #     label: ID
+    #   - field: summary
+    #   - field: priority
   - name: In Progress
     jql: assignee = currentUser() AND status = "In Progress"
 
@@ -171,11 +178,10 @@ keybindings:
 
 ### Custom fields in the sidebar
 
-The sidebar accepts built-in fields (`assignee`, `reporter`, `labels`,
-`duedate`, `priority`, `status`, `summary`, `issuetype`, `description`,
-`created`, `updated`) and any `customfield_*` field. Unknown fields produce a
-warning but don't stop the app. Use the `fields` command to discover the IDs of
-custom fields:
+The sidebar accepts any Jira field name — built-ins like `assignee`, `reporter`,
+`labels`, `duedate`, `priority`, `status`, `fixVersions`, `components`,
+`parent`, and `issuetype`, as well as any `customfield_*` field. Use the
+`fields` command to discover the IDs of custom fields:
 
 ```sh
 jira-tui fields PROJ-123
@@ -230,6 +236,7 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | `l`              | Add labels                                               |
 | `c`              | Add a comment                                            |
 | `F`              | List all fields for the issue                            |
+| `Ctrl+e`         | Edit the highlighted field (in the Fields overlay)       |
 
 *(Action keys reflect the defaults; they follow whatever you set under
 `keybindings` in your config.)*
