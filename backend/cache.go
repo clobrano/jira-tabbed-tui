@@ -230,6 +230,57 @@ func AddCommentCmd(r Runner, key, body, tabName string) tea.Cmd {
 	}
 }
 
+// FieldOptionsFetchedMsg is sent when field option values have been resolved.
+// Options is nil when the field has no enumerable values (use text input fallback).
+type FieldOptionsFetchedMsg struct {
+	FieldID      string
+	FieldName    string
+	IssueKey     string
+	Options      []string // nil = no options (free text); non-nil = show picker
+	CurrentValue string
+	Err          error
+}
+
+// FetchFieldOptionsCmd resolves the editable options for a field, then emits FieldOptionsFetchedMsg.
+// It handles the special cases (status, assignee, labels, priority) and falls back to
+// custom-field option lookup or free text for everything else.
+func FetchFieldOptionsCmd(cfgURL, issueKey, fieldID, fieldName, currentValue string) tea.Cmd {
+	return func() tea.Msg {
+		base := FieldOptionsFetchedMsg{
+			FieldID: fieldID, FieldName: fieldName,
+			IssueKey: issueKey, CurrentValue: currentValue,
+		}
+		switch fieldID {
+		case "priority":
+			opts, err := FetchPrioritiesREST(cfgURL)
+			base.Options, base.Err = opts, err
+		case "status", "assignee", "labels":
+			// These are handled by dedicated overlays; signal with a nil options slice
+			// and a sentinel Err so the caller knows to route differently.
+			base.Options = nil
+		default:
+			if len(fieldID) > 12 && fieldID[:12] == "customfield_" {
+				opts, err := FetchCustomFieldOptionsREST(cfgURL, fieldID)
+				if err != nil {
+					base.Err = err
+				} else {
+					base.Options = opts // may be nil → text input
+				}
+			}
+			// built-in text fields (summary, duedate, …): leave Options nil
+		}
+		return base
+	}
+}
+
+// EditFieldCmd applies a field value change via jira issue edit.
+func EditFieldCmd(r Runner, issueKey, fieldID, value, tabName string) tea.Cmd {
+	return func() tea.Msg {
+		err := EditField(r, issueKey, fieldID, value)
+		return WriteActionDoneMsg{Action: "edit " + fieldID, IssueKey: issueKey, TabName: tabName, Err: err}
+	}
+}
+
 // FetchRemoteLinksCmd fetches web/remote links for an issue via the Jira REST API.
 func FetchRemoteLinksCmd(cfgURL, key string) tea.Cmd {
 	return func() tea.Msg {

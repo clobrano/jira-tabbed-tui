@@ -38,6 +38,8 @@ const (
 	overlayEditJQL       overlayMode = iota
 	overlaySort          overlayMode = iota
 	overlayAssign        overlayMode = iota
+	overlayOptionPicker  overlayMode = iota
+	overlayFieldText     overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -76,6 +78,8 @@ type App struct {
 	labels       actions.LabelsModel
 	comment      actions.CommentModel
 	assign       actions.AssignModel
+	optionPicker actions.OptionPickerModel
+	fieldTextM   actions.FieldTextModel
 	addTabM      actions.AddTabModel
 	editJQLM     actions.EditJQLModel
 	deleteTabIdx int // tab index pending confirmation
@@ -342,6 +346,56 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, backend.DoAssignCmd(a.runner, msg.IssueKey, msg.Login, msg.DisplayName, tabName)
 
 	case actions.AssignCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
+	// ── field options fetched → route to right overlay ───────────────────────
+	case backend.FieldOptionsFetchedMsg:
+		if msg.Err != nil {
+			a.statusLine = a.statusLine.SetMessage("field options: "+msg.Err.Error(), true)
+			return a, nil
+		}
+		issueKey := a.detail.IssueKey()
+		switch msg.FieldID {
+		case "status":
+			a.transition = actions.NewTransitionModel(issueKey).SetSize(a.width, a.height)
+			a.overlay = overlayTransition
+			return a, backend.FetchTransitionsCmd(a.runner, a.cfg.Backend.URL, issueKey)
+		case "assignee":
+			a.assign = actions.NewAssignModel(issueKey).SetSize(a.width, a.height)
+			a.overlay = overlayAssign
+			return a, nil
+		case "labels":
+			a.labels = actions.NewLabelsModel(issueKey).SetSize(a.width, a.height)
+			a.overlay = overlayLabels
+			return a, nil
+		default:
+			if len(msg.Options) > 0 {
+				a.optionPicker = actions.NewOptionPickerModel(issueKey, msg.FieldID, msg.FieldName, msg.CurrentValue, msg.Options).SetSize(a.width, a.height)
+				a.overlay = overlayOptionPicker
+			} else {
+				a.fieldTextM = actions.NewFieldTextModel(issueKey, msg.FieldID, msg.FieldName, msg.CurrentValue).SetSize(a.width, a.height)
+				a.overlay = overlayFieldText
+			}
+		}
+		return a, nil
+
+	// ── option picker messages ────────────────────────────────────────────────
+	case actions.OptionPickedMsg:
+		a.overlay = overlayNone
+		tabName := a.currentTabName()
+		return a, backend.EditFieldCmd(a.runner, msg.IssueKey, msg.FieldID, msg.Value, tabName)
+
+	case actions.OptionPickCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
+	case actions.FieldTextSubmittedMsg:
+		a.overlay = overlayNone
+		tabName := a.currentTabName()
+		return a, backend.EditFieldCmd(a.runner, msg.IssueKey, msg.FieldID, msg.Value, tabName)
+
+	case actions.FieldTextCancelledMsg:
 		a.overlay = overlayNone
 		return a, nil
 
@@ -695,6 +749,16 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.assign, cmd = a.assign.Update(msg)
 		return a, cmd
 
+	case overlayOptionPicker:
+		var cmd tea.Cmd
+		a.optionPicker, cmd = a.optionPicker.Update(msg)
+		return a, cmd
+
+	case overlayFieldText:
+		var cmd tea.Cmd
+		a.fieldTextM, cmd = a.fieldTextM.Update(msg)
+		return a, cmd
+
 	case overlayLabels:
 		var cmd tea.Cmd
 		a.labels, cmd = a.labels.Update(msg)
@@ -723,6 +787,12 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(filtered) > 0 && a.fieldCursor < len(filtered) {
 					id := filtered[a.fieldCursor].ID
 					a.fieldSelected[id] = !a.fieldSelected[id]
+				}
+			case "ctrl+e":
+				if len(filtered) > 0 && a.fieldCursor < len(filtered) {
+					f := filtered[a.fieldCursor]
+					cur := fieldValue(a.detail.issue, f.ID)
+					return a, backend.FetchFieldOptionsCmd(a.cfg.Backend.URL, a.detail.IssueKey(), f.ID, f.DisplayName, cur)
 				}
 			case "esc":
 				if a.fieldInput.Value() != "" {
@@ -839,6 +909,10 @@ func (a App) View() string {
 		return a.transition.View()
 	case overlayAssign:
 		return a.assign.View()
+	case overlayOptionPicker:
+		return a.optionPicker.View()
+	case overlayFieldText:
+		return a.fieldTextM.View()
 	case overlayLabels:
 		return a.labels.View()
 	case overlayComment:
@@ -1120,7 +1194,7 @@ func (a App) fieldsOverlayView() string {
 	}
 
 	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).
-		Render("↑/↓ j/k navigate · Enter toggle · type filter · Esc done")
+		Render("↑/↓ j/k navigate · Enter toggle sidebar · ctrl+e edit value · type filter · Esc done")
 	sb.WriteString("\n" + hint)
 
 	// MaxHeight fires AFTER the border is applied, so it constrains the total

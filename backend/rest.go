@@ -145,6 +145,105 @@ func SearchAssignableUsersREST(cfgURL, issueKey, query string) ([]model.User, er
 	return users, nil
 }
 
+// FetchPrioritiesREST returns the list of available priorities.
+func FetchPrioritiesREST(cfgURL string) ([]string, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/rest/api/3/priority", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(email, token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching priorities: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jira API returned %d: %s", resp.StatusCode, body)
+	}
+	var raw []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parsing priorities: %w", err)
+	}
+	out := make([]string, 0, len(raw))
+	for _, p := range raw {
+		out = append(out, p.Name)
+	}
+	return out, nil
+}
+
+// FetchCustomFieldOptionsREST returns allowed option values for a custom select field.
+// Returns nil, nil when the field has no enumerable options (caller should fall back to text input).
+func FetchCustomFieldOptionsREST(cfgURL, fieldID string) ([]string, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+	doGet := func(u string) ([]byte, error) {
+		req, err := http.NewRequest(http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.SetBasicAuth(email, token)
+		req.Header.Set("Accept", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("jira API returned %d", resp.StatusCode)
+		}
+		return b, nil
+	}
+
+	// Step 1: get contexts for this field.
+	ctxBody, err := doGet(baseURL + "/rest/api/3/field/" + url.PathEscape(fieldID) + "/context?maxResults=1")
+	if err != nil {
+		return nil, err
+	}
+	var ctxResp struct {
+		Values []struct {
+			ID string `json:"id"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(ctxBody, &ctxResp); err != nil || len(ctxResp.Values) == 0 {
+		return nil, nil
+	}
+	ctxID := ctxResp.Values[0].ID
+
+	// Step 2: get options for the first context.
+	optBody, err := doGet(baseURL + "/rest/api/3/field/" + url.PathEscape(fieldID) +
+		"/context/" + ctxID + "/option?maxResults=50")
+	if err != nil {
+		return nil, nil // not a select field — silently fall back
+	}
+	var optResp struct {
+		Values []struct {
+			Value string `json:"value"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(optBody, &optResp); err != nil {
+		return nil, nil
+	}
+	out := make([]string, 0, len(optResp.Values))
+	for _, o := range optResp.Values {
+		out = append(out, o.Value)
+	}
+	return out, nil
+}
+
 // FetchRemoteLinksREST fetches web/remote links attached to an issue.
 func FetchRemoteLinksREST(cfgURL, key string) ([]model.IssueLink, error) {
 	baseURL, email, token, err := resolveJiraCredentials(cfgURL)

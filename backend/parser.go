@@ -302,6 +302,25 @@ func AddLabels(r Runner, key string, labels []string) error {
 	return err
 }
 
+// EditField sets a single field value on an issue via jira issue edit.
+// For built-in flags (priority, summary, duedate) it uses the named flag;
+// for custom fields it uses --custom-field fieldID=value.
+func EditField(r Runner, key, fieldID, value string) error {
+	var args []string
+	switch fieldID {
+	case "priority":
+		args = []string{"issue", "edit", key, "--priority", value}
+	case "summary":
+		args = []string{"issue", "edit", key, "--summary", value}
+	case "duedate":
+		args = []string{"issue", "edit", key, "--no-input", "--custom-field", fieldID + "=" + value}
+	default:
+		args = []string{"issue", "edit", key, "--no-input", "--custom-field", fieldID + "=" + value}
+	}
+	_, err := r.Run(args...)
+	return err
+}
+
 // AssignIssue assigns an issue to a user. login accepts email or display name
 // (jira-cli resolves it internally via a user search).
 func AssignIssue(r Runner, key, login string) error {
