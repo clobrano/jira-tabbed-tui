@@ -1016,8 +1016,8 @@ func (a App) detailView() string {
 
 func (a App) detailHint() string {
 	kb := a.cfg.Keybindings
-	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status · %s labels · %s comment · %s browser · Esc list · ? help",
-		kb.Transition, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
+	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status · %s assign · %s labels · %s comment · F fields · %s browser · Esc list · ? help",
+		kb.Transition, kb.Assign, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
 	var nav []string
 	if a.detailHistIdx > 0 {
 		nav = append(nav, "⌫/ctrl+o back")
