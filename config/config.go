@@ -16,8 +16,11 @@ type Backend struct {
 }
 
 type Tab struct {
-	Name string `yaml:"name"`
-	JQL  string `yaml:"jql"`
+	Name    string       `yaml:"name"`
+	JQL     string       `yaml:"jql"`
+	Sort    string       `yaml:"sort"`     // field to sort by (e.g. "priority", "key", "duedate")
+	SortAsc bool         `yaml:"sort_asc"` // true = ascending, false = descending (default)
+	Columns []ListColumn `yaml:"columns"`  // overrides global list.columns when non-empty
 }
 
 type ListColumn struct {
@@ -90,6 +93,13 @@ const defaultConfigYAML = `backend:
 tabs:
   - name: Assigned
     jql: assignee = currentUser()
+    # sort: priority   # field to sort by (key, priority, status, assignee, duedate, …)
+    # sort_asc: false  # true = ascending, false = descending (default)
+    # columns:         # overrides global list.columns for this tab only
+    #   - field: key
+    #     label: ID
+    #   - field: summary
+    #   - field: priority
   - name: In Progress
     jql: assignee = currentUser() AND status = "In Progress"
 

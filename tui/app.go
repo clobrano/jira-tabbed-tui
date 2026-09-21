@@ -113,10 +113,18 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 		search:   NewSearchInput(),
 	})
 	for _, t := range cfg.Tabs {
+		cols := cfg.List.Columns
+		if len(t.Columns) > 0 {
+			cols = t.Columns
+		}
+		l := NewIssueList(cols)
+		if t.Sort != "" {
+			l = l.SetSort(t.Sort, t.SortAsc)
+		}
 		tabs = append(tabs, tabState{
 			name: t.Name,
 			jql:  t.JQL,
-			list: NewIssueList(cfg.List.Columns),
+			list: l,
 		})
 	}
 
