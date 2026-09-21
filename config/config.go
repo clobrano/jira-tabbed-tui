@@ -200,24 +200,10 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// knownBuiltinFields are fields with canonical names (not custom fields).
-var knownBuiltinFields = map[string]bool{
-	"assignee": true, "reporter": true, "labels": true,
-	"duedate": true, "priority": true, "status": true,
-	"summary": true, "issuetype": true, "description": true,
-	"created": true, "updated": true,
-}
-
 func (c *Config) validate() error {
 	for i, tab := range c.Tabs {
 		if tab.JQL == "" {
 			return fmt.Errorf("tab %d (%q) is missing a jql value", i+1, tab.Name)
-		}
-	}
-	for _, sf := range c.Detail.SidebarFields {
-		isCustom := len(sf.Field) > 12 && sf.Field[:12] == "customfield_"
-		if !knownBuiltinFields[sf.Field] && !isCustom {
-			fmt.Fprintf(os.Stderr, "warning: unknown sidebar field %q\n", sf.Field)
 		}
 	}
 	return nil
