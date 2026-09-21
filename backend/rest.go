@@ -151,29 +151,11 @@ func FetchPrioritiesREST(cfgURL string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/rest/api/3/priority", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.SetBasicAuth(email, token)
-	req.Header.Set("Accept", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching priorities: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("jira API returned %d: %s", resp.StatusCode, body)
-	}
 	var raw []struct {
 		Name string `json:"name"`
 	}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("parsing priorities: %w", err)
+	if err := restGetJSON(baseURL, email, token, "/rest/api/3/priority", &raw); err != nil {
+		return nil, fmt.Errorf("fetching priorities: %w", err)
 	}
 	out := make([]string, 0, len(raw))
 	for _, p := range raw {
@@ -189,57 +171,129 @@ func FetchCustomFieldOptionsREST(cfgURL, fieldID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	doGet := func(u string) ([]byte, error) {
-		req, err := http.NewRequest(http.MethodGet, u, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.SetBasicAuth(email, token)
-		req.Header.Set("Accept", "application/json")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("jira API returned %d", resp.StatusCode)
-		}
-		return b, nil
-	}
-
 	// Step 1: get contexts for this field.
-	ctxBody, err := doGet(baseURL + "/rest/api/3/field/" + url.PathEscape(fieldID) + "/context?maxResults=1")
-	if err != nil {
-		return nil, err
-	}
 	var ctxResp struct {
-		Values []struct {
-			ID string `json:"id"`
-		} `json:"values"`
+		Values []struct{ ID string `json:"id"` } `json:"values"`
 	}
-	if err := json.Unmarshal(ctxBody, &ctxResp); err != nil || len(ctxResp.Values) == 0 {
+	if err := restGetJSON(baseURL, email, token,
+		"/rest/api/3/field/"+url.PathEscape(fieldID)+"/context?maxResults=1", &ctxResp); err != nil {
+		return nil, nil // not a managed field
+	}
+	if len(ctxResp.Values) == 0 {
 		return nil, nil
 	}
 	ctxID := ctxResp.Values[0].ID
 
 	// Step 2: get options for the first context.
-	optBody, err := doGet(baseURL + "/rest/api/3/field/" + url.PathEscape(fieldID) +
-		"/context/" + ctxID + "/option?maxResults=50")
-	if err != nil {
-		return nil, nil // not a select field — silently fall back
-	}
 	var optResp struct {
-		Values []struct {
-			Value string `json:"value"`
-		} `json:"values"`
+		Values []struct{ Value string `json:"value"` } `json:"values"`
 	}
-	if err := json.Unmarshal(optBody, &optResp); err != nil {
-		return nil, nil
+	if err := restGetJSON(baseURL, email, token,
+		"/rest/api/3/field/"+url.PathEscape(fieldID)+"/context/"+ctxID+"/option?maxResults=50",
+		&optResp); err != nil {
+		return nil, nil // not a select field
 	}
 	out := make([]string, 0, len(optResp.Values))
 	for _, o := range optResp.Values {
 		out = append(out, o.Value)
+	}
+	return out, nil
+}
+
+// projectKeyFromIssueKey extracts the project key from an issue key (e.g. "PROJ" from "PROJ-123").
+func projectKeyFromIssueKey(issueKey string) string {
+	if i := strings.LastIndex(issueKey, "-"); i > 0 {
+		return issueKey[:i]
+	}
+	return issueKey
+}
+
+// restGetJSON performs an authenticated GET and unmarshals the response into dest.
+func restGetJSON(baseURL, email, token, path string, dest any) error {
+	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(email, token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("jira API %s returned %d", path, resp.StatusCode)
+	}
+	return json.Unmarshal(body, dest)
+}
+
+// FetchProjectVersionsREST returns the release versions defined for the project.
+func FetchProjectVersionsREST(cfgURL, issueKey string) ([]string, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+	projectKey := projectKeyFromIssueKey(issueKey)
+	var raw []struct {
+		Name string `json:"name"`
+	}
+	if err := restGetJSON(baseURL, email, token,
+		"/rest/api/3/project/"+url.PathEscape(projectKey)+"/versions", &raw); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if v.Name != "" {
+			out = append(out, v.Name)
+		}
+	}
+	return out, nil
+}
+
+// FetchProjectComponentsREST returns the components defined for the project.
+func FetchProjectComponentsREST(cfgURL, issueKey string) ([]string, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+	projectKey := projectKeyFromIssueKey(issueKey)
+	var raw []struct {
+		Name string `json:"name"`
+	}
+	if err := restGetJSON(baseURL, email, token,
+		"/rest/api/3/project/"+url.PathEscape(projectKey)+"/components", &raw); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if v.Name != "" {
+			out = append(out, v.Name)
+		}
+	}
+	return out, nil
+}
+
+// FetchIssueTypesREST returns all issue types available in the system.
+func FetchIssueTypesREST(cfgURL string) ([]string, error) {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return nil, err
+	}
+	var raw []struct {
+		Name string `json:"name"`
+	}
+	if err := restGetJSON(baseURL, email, token, "/rest/api/3/issuetype", &raw); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if v.Name != "" {
+			out = append(out, v.Name)
+		}
 	}
 	return out, nil
 }

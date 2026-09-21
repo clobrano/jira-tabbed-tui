@@ -112,8 +112,8 @@ tabs:
 	if len(cfg.Detail.SidebarFields) == 0 {
 		t.Error("expected default sidebar fields")
 	}
-	if cfg.Keybindings.Transition != "s" {
-		t.Errorf("expected default transition key=s, got %q", cfg.Keybindings.Transition)
+	if cfg.Keybindings.Transition != "m" {
+		t.Errorf("expected default transition key=m, got %q", cfg.Keybindings.Transition)
 	}
 	if cfg.Keybindings.Help != "?" {
 		t.Errorf("expected default help key=?, got %q", cfg.Keybindings.Help)

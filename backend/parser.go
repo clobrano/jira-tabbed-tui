@@ -320,8 +320,13 @@ func EditField(r Runner, key, fieldID, value string) error {
 		args = []string{"issue", "edit", key, "--no-input", "--summary", value}
 	case "assignee":
 		args = []string{"issue", "edit", key, "--no-input", "--assignee", value}
+	case "fixVersions", "versions", "affectsVersions":
+		args = []string{"issue", "edit", key, "--no-input", "--fix-version", value}
+	case "components":
+		args = []string{"issue", "edit", key, "--no-input", "--component", value}
+	case "issuetype":
+		args = []string{"issue", "edit", key, "--no-input", "--type", value}
 	default:
-		// Covers duedate, customfield_*, and any other field jira-cli accepts via --custom.
 		args = []string{"issue", "edit", key, "--no-input", "--custom", fieldID + "=" + value}
 	}
 	_, err := r.Run(args...)

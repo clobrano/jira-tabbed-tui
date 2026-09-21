@@ -374,7 +374,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.optionPicker = actions.NewOptionPickerModel(issueKey, msg.FieldID, msg.FieldName, msg.CurrentValue, msg.Options).SetSize(a.width, a.height)
 				a.overlay = overlayOptionPicker
 			} else {
-				a.fieldTextM = actions.NewFieldTextModel(issueKey, msg.FieldID, msg.FieldName, msg.CurrentValue).SetSize(a.width, a.height)
+				a.fieldTextM = actions.NewFieldTextModel(issueKey, msg.FieldID, msg.FieldName, msg.CurrentValue, msg.FallbackMsg).SetSize(a.width, a.height)
 				a.overlay = overlayFieldText
 			}
 		}

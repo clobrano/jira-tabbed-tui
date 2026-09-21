@@ -236,44 +236,72 @@ func AddCommentCmd(r Runner, key, body, tabName string) tea.Cmd {
 }
 
 // FieldOptionsFetchedMsg is sent when field option values have been resolved.
-// Options is nil when the field has no enumerable values (use text input fallback).
+// Options nil + FallbackMsg non-empty = no predefined values, show text input with the message.
+// Options nil + FallbackMsg empty = dedicated overlay handles this field (status/assignee/labels).
 type FieldOptionsFetchedMsg struct {
 	FieldID      string
 	FieldName    string
 	IssueKey     string
-	Options      []string // nil = no options (free text); non-nil = show picker
+	Options      []string
 	CurrentValue string
+	FallbackMsg  string // neutral info shown when falling back to free text
 	Err          error
 }
 
-// FetchFieldOptionsCmd resolves the editable options for a field, then emits FieldOptionsFetchedMsg.
-// It handles the special cases (status, assignee, labels, priority) and falls back to
-// custom-field option lookup or free text for everything else.
+// FetchFieldOptionsCmd resolves editable options for any field, then emits FieldOptionsFetchedMsg.
+// Strategy per field type:
+//   - status/assignee/labels → dedicated overlays (nil Options, empty FallbackMsg)
+//   - priority               → GET /rest/api/3/priority
+//   - fixVersions/versions   → GET /rest/api/3/project/{key}/versions
+//   - affectsVersions        → same as versions
+//   - components             → GET /rest/api/3/project/{key}/components
+//   - issuetype              → GET /rest/api/3/issuetype
+//   - customfield_*          → context/option chain; nil if not a select field
+//   - anything else          → skip fetch, free text with FallbackMsg
 func FetchFieldOptionsCmd(cfgURL, issueKey, fieldID, fieldName, currentValue string) tea.Cmd {
 	return func() tea.Msg {
 		base := FieldOptionsFetchedMsg{
 			FieldID: fieldID, FieldName: fieldName,
 			IssueKey: issueKey, CurrentValue: currentValue,
 		}
+
+		var (
+			opts []string
+			err  error
+		)
+
 		switch fieldID {
-		case "priority":
-			opts, err := FetchPrioritiesREST(cfgURL)
-			base.Options, base.Err = opts, err
 		case "status", "assignee", "labels":
-			// These are handled by dedicated overlays; signal with a nil options slice
-			// and a sentinel Err so the caller knows to route differently.
-			base.Options = nil
+			// Handled by dedicated overlays — return as-is (nil Options, no FallbackMsg).
+			return base
+
+		case "priority":
+			opts, err = FetchPrioritiesREST(cfgURL)
+
+		case "fixVersions", "versions", "affectsVersions":
+			opts, err = FetchProjectVersionsREST(cfgURL, issueKey)
+
+		case "components":
+			opts, err = FetchProjectComponentsREST(cfgURL, issueKey)
+
+		case "issuetype":
+			opts, err = FetchIssueTypesREST(cfgURL)
+
 		default:
 			if len(fieldID) > 12 && fieldID[:12] == "customfield_" {
-				opts, err := FetchCustomFieldOptionsREST(cfgURL, fieldID)
-				if err != nil {
-					base.Err = err
-				} else {
-					base.Options = opts // may be nil → text input
-				}
+				opts, err = FetchCustomFieldOptionsREST(cfgURL, fieldID)
 			}
-			// built-in text fields (summary, duedate, …): leave Options nil
+			// For unknown built-in fields, opts stays nil → free text.
 		}
+
+		if err != nil {
+			base.Err = err
+			return base
+		}
+		if len(opts) == 0 {
+			base.FallbackMsg = "No predefined values found — enter manually"
+		}
+		base.Options = opts
 		return base
 	}
 }

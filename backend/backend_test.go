@@ -148,7 +148,7 @@ func TestFakeRunnerMissingKey(t *testing.T) {
 func TestWriteFunctions(t *testing.T) {
 	r := backend.NewFakeRunner()
 	r.Register([]byte(`{"success":true}`), "issue", "move", "PROJ-123", "Done")
-	r.Register([]byte(`{"success":true}`), "issue", "label", "add", "PROJ-123", "backend")
+	r.Register([]byte(`{"success":true}`), "issue", "edit", "PROJ-123", "--label", "backend")
 	r.Register([]byte(`{"success":true}`), "issue", "comment", "add", "PROJ-123", "hello")
 
 	if err := backend.ApplyTransition(r, "PROJ-123", "Done"); err != nil {

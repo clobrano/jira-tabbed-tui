@@ -98,22 +98,26 @@ func (m LabelsModel) View() string {
 // FieldTextModel is a generic single-line text input for editing a named field.
 // It emits FieldTextSubmittedMsg / FieldTextCancelledMsg (defined in optionpicker.go).
 type FieldTextModel struct {
-	issueKey  string
-	fieldID   string
-	fieldName string
-	input     textinput.Model
-	width     int
-	height    int
+	issueKey    string
+	fieldID     string
+	fieldName   string
+	fallbackMsg string
+	input       textinput.Model
+	width       int
+	height      int
 }
 
-func NewFieldTextModel(issueKey, fieldID, fieldName, currentValue string) FieldTextModel {
+func NewFieldTextModel(issueKey, fieldID, fieldName, currentValue, fallbackMsg string) FieldTextModel {
 	ti := textinput.New()
 	ti.Placeholder = "new value…"
 	ti.CharLimit = 256
 	ti.Width = 40
 	ti.SetValue(currentValue)
 	ti.Focus()
-	return FieldTextModel{issueKey: issueKey, fieldID: fieldID, fieldName: fieldName, input: ti}
+	return FieldTextModel{
+		issueKey: issueKey, fieldID: fieldID, fieldName: fieldName,
+		fallbackMsg: fallbackMsg, input: ti,
+	}
 }
 
 func (m FieldTextModel) SetSize(w, h int) FieldTextModel {
@@ -158,7 +162,14 @@ func (m FieldTextModel) View() string {
 		Render("Edit: " + m.fieldName)
 	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).
 		Render("Enter to confirm  •  Esc to cancel")
-	content := title + "\n\n" + m.input.View() + "\n\n" + hint
+	var content string
+	if m.fallbackMsg != "" {
+		info := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaaaaa")).Italic(true).
+			Render(m.fallbackMsg)
+		content = title + "\n\n" + info + "\n\n" + m.input.View() + "\n\n" + hint
+	} else {
+		content = title + "\n\n" + m.input.View() + "\n\n" + hint
+	}
 	overlay := labelsOverlayStyle.Width(overlayW).Render(content)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay)
 }
