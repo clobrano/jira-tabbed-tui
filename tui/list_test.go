@@ -24,3 +24,20 @@ func TestIssueFieldValueUsesRawJiraFields(t *testing.T) {
 		t.Errorf("customfield_10020 = %q, want %q", got, "Sprint 5")
 	}
 }
+
+func TestIssueFieldValueFormatsParentObject(t *testing.T) {
+	issue := model.Issue{
+		Fields: map[string]any{
+			"parent": map[string]any{
+				"key": "OSAC-5427",
+				"fields": map[string]any{
+					"summary": "SSH Keys resource",
+				},
+			},
+		},
+	}
+
+	if got := issueFieldValue(issue, "parent"); got != "OSAC-5427" {
+		t.Errorf("parent = %q, want %q", got, "OSAC-5427")
+	}
+}

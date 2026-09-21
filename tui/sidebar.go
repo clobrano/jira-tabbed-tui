@@ -110,6 +110,13 @@ func formatFieldValue(val any) string {
 			return fmt.Sprintf("%d", int(v))
 		}
 		return fmt.Sprintf("%.2f", v)
+	case map[string]any:
+		for _, key := range []string{"name", "displayName", "value", "key"} {
+			if s, ok := v[key].(string); ok && s != "" {
+				return s
+			}
+		}
+		return ""
 	case []any:
 		parts := make([]string, 0, len(v))
 		for _, item := range v {

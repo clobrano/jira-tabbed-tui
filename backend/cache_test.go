@@ -17,6 +17,23 @@ func runCmd(cmd tea.Cmd) tea.Msg {
 	return cmd()
 }
 
+func TestFetchChildrenUsesSupportedPageSize(t *testing.T) {
+	r := backend.NewFakeRunner()
+	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = PROJ AND parent = PROJ-123", "--paginate", "0:100")
+
+	msg := runCmd(backend.FetchChildrenCmd(r, "PROJ-123"))
+	cm, ok := msg.(backend.ChildrenFetchedMsg)
+	if !ok {
+		t.Fatalf("expected ChildrenFetchedMsg, got %T", msg)
+	}
+	if cm.Err != nil {
+		t.Fatalf("unexpected error: %v", cm.Err)
+	}
+	if len(cm.Children) != 2 {
+		t.Errorf("expected 2 children, got %d", len(cm.Children))
+	}
+}
+
 func TestCacheTTLNotExpired(t *testing.T) {
 	r := backend.NewFakeRunner()
 	r.Register(loadFixture(t, "list.json"), "issue", "list", "--raw", "-q", "project = A", "--paginate", "0:50")

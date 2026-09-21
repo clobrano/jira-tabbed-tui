@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -192,7 +193,11 @@ func (c *Cache) FetchDetailCmd(r Runner, key string) tea.Cmd {
 // they must be queried separately via JQL.
 func FetchChildrenCmd(r Runner, key string) tea.Cmd {
 	return func() tea.Msg {
-		issues, _, err := FetchIssueList(r, "parent = "+key, 200)
+		jql := "parent = " + key
+		if project, _, ok := strings.Cut(key, "-"); ok {
+			jql = "project = " + project + " AND " + jql
+		}
+		issues, _, err := FetchIssueList(r, jql, 100)
 		return ChildrenFetchedMsg{ParentKey: key, Children: issues, Err: err}
 	}
 }
