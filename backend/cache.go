@@ -307,9 +307,10 @@ func FetchFieldOptionsCmd(cfgURL, issueKey, fieldID, fieldName, currentValue str
 }
 
 // EditFieldCmd applies a field value change via jira issue edit.
-func EditFieldCmd(r Runner, issueKey, fieldID, value, tabName string) tea.Cmd {
+// replace=true overwrites multi-value fields; false appends.
+func EditFieldCmd(r Runner, cfgURL, issueKey, fieldID, value, tabName string, replace bool) tea.Cmd {
 	return func() tea.Msg {
-		err := EditField(r, issueKey, fieldID, value)
+		err := EditField(r, cfgURL, issueKey, fieldID, value, replace)
 		return WriteActionDoneMsg{Action: "edit " + fieldID, IssueKey: issueKey, TabName: tabName, Err: err}
 	}
 }

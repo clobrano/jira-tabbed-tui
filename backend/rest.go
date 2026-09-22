@@ -354,3 +354,62 @@ func FetchRemoteLinksREST(cfgURL, key string) ([]model.IssueLink, error) {
 	}
 	return links, nil
 }
+
+// restPutJSON performs an authenticated PUT with a JSON body.
+func restPutJSON(baseURL, email, token, path string, body any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPut, baseURL+path, strings.NewReader(string(data)))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(email, token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("jira API PUT %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+// ReplaceFieldREST replaces a field value on an issue via the Jira REST API,
+// overwriting any existing values (use for multi-value fields like fixVersions).
+func ReplaceFieldREST(cfgURL, issueKey, fieldID, value string) error {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/rest/api/3/issue/%s", issueKey)
+	body := map[string]any{
+		"fields": buildFieldBody(fieldID, value),
+	}
+	return restPutJSON(baseURL, email, token, path, body)
+}
+
+// buildFieldBody constructs the Jira REST API field update payload for a single value.
+func buildFieldBody(fieldID, value string) map[string]any {
+	switch fieldID {
+	case "fixVersions", "versions", "affectsVersions":
+		return map[string]any{fieldID: []map[string]any{{"name": value}}}
+	case "components":
+		return map[string]any{"components": []map[string]any{{"name": value}}}
+	case "labels":
+		return map[string]any{"labels": []string{value}}
+	case "issuetype":
+		return map[string]any{"issuetype": map[string]any{"name": value}}
+	case "priority":
+		return map[string]any{"priority": map[string]any{"name": value}}
+	case "summary":
+		return map[string]any{"summary": value}
+	default:
+		return map[string]any{fieldID: value}
+	}
+}

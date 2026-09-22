@@ -15,6 +15,7 @@ type OptionPickedMsg struct {
 	FieldName string
 	IssueKey  string
 	Value     string
+	Replace   bool // true = overwrite existing value(s); false = append
 }
 
 // OptionPickCancelledMsg is sent when the user cancels.
@@ -68,6 +69,7 @@ type OptionPickerModel struct {
 	currentValue string
 	cursor       int
 	filter       textinput.Model
+	replaceMode  bool // true = overwrite; false = append
 	width        int
 	height       int
 }
@@ -86,6 +88,7 @@ func NewOptionPickerModel(issueKey, fieldID, fieldName, currentValue string, opt
 		allOptions:   options,
 		filtered:     options,
 		filter:       ti,
+		replaceMode:  true,
 	}
 	m.cursor = m.indexOfCurrent()
 	return m
@@ -140,12 +143,15 @@ func (m OptionPickerModel) Update(msg tea.Msg) (OptionPickerModel, tea.Cmd) {
 	case "esc":
 		return m, func() tea.Msg { return OptionPickCancelledMsg{} }
 
+	case "tab":
+		m.replaceMode = !m.replaceMode
+
 	case "enter":
 		if m.cursor < len(m.filtered) {
 			v := m.filtered[m.cursor]
-			fid, fname, ikey := m.fieldID, m.fieldName, m.issueKey
+			fid, fname, ikey, replace := m.fieldID, m.fieldName, m.issueKey, m.replaceMode
 			return m, func() tea.Msg {
-				return OptionPickedMsg{FieldID: fid, FieldName: fname, IssueKey: ikey, Value: v}
+				return OptionPickedMsg{FieldID: fid, FieldName: fname, IssueKey: ikey, Value: v, Replace: replace}
 			}
 		}
 
@@ -220,7 +226,12 @@ func (m OptionPickerModel) View() string {
 		}
 	}
 
-	sb.WriteString("\n" + optionPickerHintStyle.Render("type filter  •  j/k navigate  •  Enter select  •  Esc cancel"))
+	mode := "replace"
+	if !m.replaceMode {
+		mode = "append"
+	}
+	sb.WriteString("\n" + optionPickerHintStyle.Render(
+		fmt.Sprintf("type filter  •  j/k navigate  •  Tab mode: %s  •  Enter select  •  Esc cancel", mode)))
 
 	overlay := optionPickerOverlayStyle.Width(overlayW).Render(sb.String())
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay)

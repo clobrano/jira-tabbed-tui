@@ -392,7 +392,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actions.OptionPickedMsg:
 		a.overlay = overlayNone
 		tabName := a.currentTabName()
-		return a, backend.EditFieldCmd(a.runner, msg.IssueKey, msg.FieldID, msg.Value, tabName)
+		return a, backend.EditFieldCmd(a.runner, a.cfg.Backend.URL, msg.IssueKey, msg.FieldID, msg.Value, tabName, msg.Replace)
 
 	case actions.OptionPickCancelledMsg:
 		a.overlay = overlayNone
@@ -401,7 +401,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actions.FieldTextSubmittedMsg:
 		a.overlay = overlayNone
 		tabName := a.currentTabName()
-		return a, backend.EditFieldCmd(a.runner, msg.IssueKey, msg.FieldID, msg.Value, tabName)
+		return a, backend.EditFieldCmd(a.runner, a.cfg.Backend.URL, msg.IssueKey, msg.FieldID, msg.Value, tabName, true)
 
 	case actions.FieldTextCancelledMsg:
 		a.overlay = overlayNone

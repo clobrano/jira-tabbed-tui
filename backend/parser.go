@@ -17,6 +17,9 @@ func FetchIssueList(r Runner, jql string, maxResults int) ([]model.Issue, int, e
 	}
 	data, err := r.Run(args...)
 	if err != nil {
+		if isEmptyResultsError(err) {
+			return nil, 0, nil
+		}
 		return nil, 0, err
 	}
 	return parseIssueList(data)
@@ -28,9 +31,18 @@ func FetchIssueListPage(r Runner, jql string, maxResults, startAt int) ([]model.
 		"--paginate", fmt.Sprintf("%d:%d", startAt, maxResults)}
 	data, err := r.Run(args...)
 	if err != nil {
+		if isEmptyResultsError(err) {
+			return nil, 0, nil
+		}
 		return nil, 0, err
 	}
 	return parseIssueList(data)
+}
+
+// isEmptyResultsError returns true when the jira CLI exits non-zero solely
+// because the query matched zero issues (not a real error).
+func isEmptyResultsError(err error) bool {
+	return strings.Contains(err.Error(), "No result found for given query")
 }
 
 type listResponse struct {
@@ -309,9 +321,15 @@ func AddLabels(r Runner, key string, labels []string) error {
 	return err
 }
 
-// EditField sets a single field value on an issue via jira issue edit.
-// Built-in fields use their named flags; custom fields use --custom key=value.
-func EditField(r Runner, key, fieldID, value string) error {
+// EditField sets a field value on an issue via jira issue edit.
+// When replace is true and cfgURL is non-empty, multi-value fields are replaced
+// via the REST API instead of appended. Single-value fields always replace.
+func EditField(r Runner, cfgURL, key, fieldID, value string, replace bool) error {
+	multiValue := fieldID == "fixVersions" || fieldID == "versions" ||
+		fieldID == "affectsVersions" || fieldID == "components" || fieldID == "labels"
+	if replace && multiValue && cfgURL != "" {
+		return ReplaceFieldREST(cfgURL, key, fieldID, value)
+	}
 	var args []string
 	switch fieldID {
 	case "priority":
