@@ -644,18 +644,15 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case a.cfg.Keybindings.Sort:
-		if !tab.isSearch {
-			sf := a.sortableFields()
-			// Pre-position cursor on the currently active sort field.
-			a.sortCursor = 0
-			for i, f := range sf {
-				if f.ID == tab.list.SortField() {
-					a.sortCursor = i
-					break
-				}
+		sf := a.sortableFields()
+		a.sortCursor = 0
+		for i, f := range sf {
+			if f.ID == tab.list.SortField() {
+				a.sortCursor = i
+				break
 			}
-			a.overlay = overlaySort
 		}
+		a.overlay = overlaySort
 	}
 	return a, nil
 }
@@ -987,7 +984,8 @@ func (a App) listHint() string {
 		if tab.search.IsFocused() {
 			return "Enter run JQL · Tab/←→ switch tabs · ? help · q quit"
 		}
-		return "j/k navigate · Enter open · Q edit JQL · Tab/←→ tabs · ? help · q quit"
+		return fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s sort · Q edit JQL · Tab/←→ tabs · ? help · q quit",
+			a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Sort)
 	}
 	if tab.list.IsFilterActive() {
 		return "type to filter · Enter confirm · Esc clear"
