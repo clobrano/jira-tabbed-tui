@@ -355,6 +355,17 @@ func FetchRemoteLinksREST(cfgURL, key string) ([]model.IssueLink, error) {
 	return links, nil
 }
 
+// AssignIssueREST assigns an issue to a user via the Jira REST API using the account ID.
+func AssignIssueREST(cfgURL, issueKey, accountID string) error {
+	baseURL, email, token, err := resolveJiraCredentials(cfgURL)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/rest/api/3/issue/%s/assignee", issueKey)
+	body := map[string]any{"accountId": accountID}
+	return restPutJSON(baseURL, email, token, path, body)
+}
+
 // restPutJSON performs an authenticated PUT with a JSON body.
 func restPutJSON(baseURL, email, token, path string, body any) error {
 	data, err := json.Marshal(body)

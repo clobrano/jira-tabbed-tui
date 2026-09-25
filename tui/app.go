@@ -351,7 +351,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actions.AssignConfirmedMsg:
 		a.overlay = overlayNone
 		tabName := a.currentTabName()
-		return a, backend.DoAssignCmd(a.runner, msg.IssueKey, msg.Login, msg.DisplayName, tabName)
+		return a, backend.DoAssignCmd(a.cfg.Backend.URL, msg.IssueKey, msg.AccountID, msg.DisplayName, tabName)
 
 	case actions.AssignCancelledMsg:
 		a.overlay = overlayNone

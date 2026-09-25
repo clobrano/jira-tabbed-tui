@@ -26,7 +26,7 @@ type AssignSearchRequestMsg struct {
 // AssignConfirmedMsg is sent when the user selects an assignee.
 type AssignConfirmedMsg struct {
 	IssueKey    string
-	Login       string // email if available, otherwise display name
+	AccountID   string
 	DisplayName string
 }
 
@@ -155,12 +155,8 @@ func (m AssignModel) Update(msg tea.Msg) (AssignModel, tea.Cmd) {
 		case "enter":
 			if m.cursor < len(m.results) {
 				u := m.results[m.cursor]
-				login := u.Email
-				if login == "" {
-					login = u.DisplayName
-				}
 				return m, func() tea.Msg {
-					return AssignConfirmedMsg{IssueKey: m.issueKey, Login: login, DisplayName: u.DisplayName}
+					return AssignConfirmedMsg{IssueKey: m.issueKey, AccountID: u.AccountID, DisplayName: u.DisplayName}
 				}
 			}
 		case "/":

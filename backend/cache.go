@@ -331,10 +331,10 @@ func AssignSearchCmd(cfgURL, issueKey, query string) tea.Cmd {
 	}
 }
 
-// DoAssignCmd assigns the issue and emits WriteActionDoneMsg.
-func DoAssignCmd(r Runner, key, login, displayName, tabName string) tea.Cmd {
+// DoAssignCmd assigns the issue via the Jira REST API using the account ID.
+func DoAssignCmd(cfgURL, key, accountID, displayName, tabName string) tea.Cmd {
 	return func() tea.Msg {
-		err := AssignIssue(r, key, login)
+		err := AssignIssueREST(cfgURL, key, accountID)
 		return WriteActionDoneMsg{Action: "assign to " + displayName, IssueKey: key, TabName: tabName, Err: err}
 	}
 }
