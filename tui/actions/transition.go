@@ -56,7 +56,7 @@ type TransitionModel struct {
 
 func NewTransitionModel(issueKey string) TransitionModel {
 	l := list.New(nil, list.NewDefaultDelegate(), 40, 12)
-	l.Title = "Change Status"
+	l.Title = "Change Status · " + issueKey
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(false)
 	l.Styles.Title = transitionTitleStyle

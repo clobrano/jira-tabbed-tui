@@ -102,9 +102,16 @@ func (d Detail) SetSize(w, h int, sidebarPct int) Detail {
 }
 
 func (d Detail) SetIssue(issue model.IssueDetail) Detail {
+	// Reloading the same issue (e.g. after acting on one of its links) keeps
+	// the current body tab, link cursor and scroll position.
+	refresh := issue.Key != "" && issue.Key == d.issue.Key
 	d.issue = issue
 	d.loading = false
 	d.err = nil
+	if refresh {
+		d.vp.SetContent(d.bodyContent(d.vp.Width))
+		return d
+	}
 	d.bodyTab = bodyTabDescription
 	d.linkCursor = 0
 	d.vp.SetContent(d.bodyContent(d.vp.Width))

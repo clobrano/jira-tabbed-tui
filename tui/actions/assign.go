@@ -176,7 +176,7 @@ func (m AssignModel) View() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(assignTitleStyle.Render("Assign Issue") + "\n\n")
+	sb.WriteString(assignTitleStyle.Render("Assign "+m.issueKey) + "\n\n")
 
 	switch m.phase {
 	case assignPhaseInput:
