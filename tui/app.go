@@ -278,8 +278,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusLine = a.statusLine.SetMessage(msg.Action+" succeeded", false)
 		a.cache.Invalidate(msg.TabName, msg.IssueKey)
 		var cmds []tea.Cmd
-		// Re-fetch detail and the originating tab list.
-		cmds = append(cmds, a.cache.FetchDetailCmd(a.runner, msg.IssueKey))
+		// Re-fetch detail and the originating tab list. When the action targeted
+		// a linked issue from the detail view, refresh the displayed issue instead
+		// (its Links tab shows the linked issue's status).
+		detailKey := msg.IssueKey
+		if a.view == viewDetail && a.detail.IssueKey() != "" && a.detail.IssueKey() != msg.IssueKey {
+			detailKey = a.detail.IssueKey()
+			a.cache.Invalidate("", detailKey)
+		}
+		cmds = append(cmds, a.cache.FetchDetailCmd(a.runner, detailKey))
 		for i, t := range a.tabs {
 			if t.name == msg.TabName {
 				a.tabs[i].list = a.tabs[i].list.SetLoading(true)
@@ -692,13 +699,13 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.detail = a.detail.SwitchBodyTab(1)
 
 	case a.cfg.Keybindings.Transition:
-		key := a.detail.IssueKey()
+		key := a.detailActionTarget()
 		a.transition = actions.NewTransitionModel(key).SetSize(a.width, a.height)
 		a.overlay = overlayTransition
 		return a, backend.FetchTransitionsCmd(a.runner, a.cfg.Backend.URL, key)
 
 	case a.cfg.Keybindings.Assign:
-		key := a.detail.IssueKey()
+		key := a.detailActionTarget()
 		a.assign = actions.NewAssignModel(key).SetSize(a.width, a.height)
 		a.overlay = overlayAssign
 		return a, nil
@@ -1022,8 +1029,13 @@ func (a App) detailView() string {
 
 func (a App) detailHint() string {
 	kb := a.cfg.Keybindings
-	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status · %s assign · %s labels · %s comment · F fields · %s browser · Esc list · ? help",
-		kb.Transition, kb.Assign, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
+	// On a linked Jira issue, status/assign act on the link, so name it.
+	target := ""
+	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
+		target = " " + key
+	}
+	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status%s · %s assign%s · %s labels · %s comment · F fields · %s browser · Esc list · ? help",
+		kb.Transition, target, kb.Assign, target, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
 	var nav []string
 	if a.detailHistIdx > 0 {
 		nav = append(nav, "⌫/ctrl+o back")
@@ -1321,6 +1333,16 @@ func (a App) pushHistory(key string) App {
 	a.detailHistory = append(a.detailHistory[:a.detailHistIdx+1], key)
 	a.detailHistIdx = len(a.detailHistory) - 1
 	return a
+}
+
+// detailActionTarget returns the issue key that move/assign should act on in
+// the detail view: the highlighted linked Jira issue on the Links tab, or the
+// displayed issue otherwise.
+func (a App) detailActionTarget() string {
+	if link, ok := a.detail.SelectedLink(); ok && link.URL == "" && link.Key != "" {
+		return link.Key
+	}
+	return a.detail.IssueKey()
 }
 
 func (a App) currentTabName() string {

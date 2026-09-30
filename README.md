@@ -231,8 +231,8 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | `←` / `→`        | Switch body tab (Description / Comments / Links)         |
 | `Enter`          | Open the linked issue (on the Links tab)                 |
 | `o`              | Open in browser                                          |
-| `m`              | Change status                                            |
-| `a`              | Assign issue                                             |
+| `m`              | Change status (of the highlighted linked issue on the Links tab) |
+| `a`              | Assign issue (the highlighted linked issue on the Links tab)     |
 | `l`              | Add labels                                               |
 | `c`              | Add a comment                                            |
 | `F`              | List all fields for the issue                            |
