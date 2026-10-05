@@ -76,13 +76,24 @@ func Save(path string, cfg Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// DefaultPath returns the default config file path.
+// DefaultPath returns the default config file path,
+// ~/.config/jira-tabbed-tui/config.yaml. Older releases used
+// ~/.config/jira-tui/config.yaml; that file is still used when it exists and
+// the new one does not, so existing setups keep working.
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "config.yaml"
 	}
-	return filepath.Join(home, ".config", "jira-tui", "config.yaml")
+	path := filepath.Join(home, ".config", "jira-tabbed-tui", "config.yaml")
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	legacy := filepath.Join(home, ".config", "jira-tui", "config.yaml")
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return path
 }
 
 // defaultConfigYAML is written to disk when no config file exists.

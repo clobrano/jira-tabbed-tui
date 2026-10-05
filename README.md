@@ -60,10 +60,10 @@ talks to the Jira REST API directly for the few things the CLI can't do.
 ```sh
 git clone https://github.com/clobrano/jira-tabbed-tui.git
 cd jira-tabbed-tui
-go build -o jira-tui .
+go build -o jira-tabbed-tui .
 ```
 
-Then move the resulting `jira-tui` binary somewhere on your `PATH`.
+Then move the resulting `jira-tabbed-tui` binary somewhere on your `PATH`.
 
 ### With `go install`
 
@@ -91,11 +91,11 @@ This installs a binary named `jira-tabbed-tui` into `$(go env GOPATH)/bin`.
 3. Run it:
 
    ```sh
-   jira-tui
+   jira-tabbed-tui
    ```
 
    On first launch, if no config file exists, a sensible default is written to
-   `~/.config/jira-tui/config.yaml` and the app starts with two tabs:
+   `~/.config/jira-tabbed-tui/config.yaml` and the app starts with two tabs:
    *Assigned* and *In Progress*.
 
 At startup the app verifies that the CLI binary is on your `PATH` and runs a
@@ -121,9 +121,11 @@ config.
 
 ## Configuration
 
-Configuration lives at `~/.config/jira-tui/config.yaml` by default (override with
-`--config /path/to/config.yaml`). The file is created with defaults on first run
-if it doesn't exist.
+Configuration lives at `~/.config/jira-tabbed-tui/config.yaml` by default
+(override with `--config /path/to/config.yaml`). The file is created with
+defaults on first run if it doesn't exist. Configs from older releases at
+`~/.config/jira-tui/config.yaml` are still picked up when the new file doesn't
+exist; move the file to the new location whenever convenient.
 
 ```yaml
 backend:
@@ -189,7 +191,7 @@ The sidebar accepts any Jira field name — built-ins like `assignee`, `reporter
 `fields` command to discover the IDs of custom fields:
 
 ```sh
-jira-tui fields PROJ-123
+jira-tabbed-tui fields PROJ-123
 ```
 
 This prints a field-name-to-ID mapping for the given issue (no TUI), which you
@@ -197,7 +199,7 @@ can paste straight into your `list.columns` or `detail.sidebar_fields`.
 
 ## Usage
 
-Launch with `jira-tui` (or `jira-tabbed-tui`, depending on how you installed it).
+Launch with `jira-tabbed-tui`.
 Press `?` at any time for the context-sensitive keybindings overlay.
 
 ### Navigation
