@@ -44,6 +44,12 @@ Sleep 1.2s
 Type "1"
 Sleep 1s
 
+# --- copy picker: grab the highlighted ticket's URL ----------------------------
+Type "Y"
+Sleep 2.5s
+Type "u"
+Sleep 1.5s
+
 # --- open an issue and read the detail ---------------------------------------
 Enter
 Sleep 1.5s
@@ -53,6 +59,18 @@ Right
 Sleep 1.5s
 Left
 Sleep 1s
+
+# --- copy picker in the detail view: mark key + summary, copy both ------------
+Type "Y"
+Sleep 2s
+Space
+Sleep 600ms
+Down
+Sleep 600ms
+Space
+Sleep 1.2s
+Enter
+Sleep 1.8s
 
 # --- back to the list, then the help overlay ---------------------------------
 Escape

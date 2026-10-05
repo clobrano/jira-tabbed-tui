@@ -27,7 +27,11 @@ talks to the Jira REST API directly for the few things the CLI can't do.
   remote/web links) split across body tabs, with a configurable sidebar of
   fields.
 - **Write actions from the terminal** — change status (transitions), assign
-  users, add labels, and post comments without leaving the app.
+  users, add labels, and post comments without leaving the app. On the Links
+  tab, move or assign the highlighted linked issue without opening it.
+- **Copy to clipboard** — press `Y` to pick which column values or issue
+  fields to copy, or grab the issue's full URL with `Y` `u`
+  (see [Copying to the clipboard](#copying-to-the-clipboard)).
 - **Fuzzy filtering** — instantly narrow the loaded rows with `/`.
 - **Sorting** — reorder the current list by any column.
 - **ADF rendering** — Atlassian Document Format bodies (Jira Cloud) are rendered

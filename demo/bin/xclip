@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#
+# Mock "xclip" for the jira-tabbed-tui demo.
+#
+# The copy picker (Y) writes to the clipboard through xclip/xsel/wl-copy. This
+# stand-in swallows the text so the recording behaves the same on any machine
+# (no X display or clipboard tool needed). Do not put it on your real PATH.
+
+cat >/dev/null

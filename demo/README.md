@@ -8,6 +8,7 @@ credentials.
 ```
 demo/
 ├── bin/jira      # mock jira CLI — returns canned JSON (not a real client!)
+├── bin/xclip     # mock clipboard tool — swallows what the copy picker writes
 ├── config.yaml   # demo config, points backend.cli at the mock
 ├── demo.tape     # VHS script that drives and records the TUI
 └── demo.gif      # generated output (committed so the README renders)
@@ -34,14 +35,17 @@ vhs demo/demo.tape
 
 The tape prepends `demo/bin` to `PATH` so the mock `jira` shadows any real one
 for the duration of the recording, launches `jira-tui --config demo/config.yaml`,
-then browses the board, switches tabs, opens an issue, and shows the help
-overlay. Output is written to `demo/demo.gif`.
+then browses the board, switches tabs, copies an issue URL with the copy picker
+(`Y` then `u`), opens an issue, copies its key and summary (`Y`, mark both,
+`Enter`), and shows the help overlay. Output is written to `demo/demo.gif`.
 
 ## Notes
 
 - `demo/bin/jira` is a stand-in for [`ankitpokhrel/jira-cli`][jira-cli] that
   understands only what the demo exercises (`me`, `issue list --raw`,
   `issue view --raw`). Do **not** add it to your real `PATH`.
+- `demo/bin/xclip` stands in for the clipboard tool so the copy steps behave
+  the same on any machine (no X display needed). It discards its input.
 - To change what the board shows, edit the canned JSON in `demo/bin/jira`.
 - To change the choreography (which keys are pressed, timing, theme, size),
   edit `demo/demo.tape`.
