@@ -87,6 +87,21 @@ func TestDetailCopyItems(t *testing.T) {
 	}
 }
 
+func TestDetailCopyItemsUsesSidebarWhenCoreFieldEmpty(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	d := model.IssueDetail{Issue: model.Issue{
+		Key:    "PROJ-1",
+		Fields: map[string]any{"assignee": map[string]any{"displayName": "Ann"}},
+	}}
+	items := detailCopyItems(d, []config.SidebarField{{Field: "assignee"}}, nil, "")
+	for _, it := range items {
+		if it.Label == "Assignee" && it.Value == "Ann" {
+			return
+		}
+	}
+	t.Fatalf("assignee from raw fields missing: %+v", items)
+}
+
 func runCopyKeys(t *testing.T, m actions.CopyModel, keys ...string) actions.CopyConfirmedMsg {
 	t.Helper()
 	var cmd tea.Cmd

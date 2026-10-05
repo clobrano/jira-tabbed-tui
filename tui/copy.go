@@ -74,16 +74,18 @@ func detailCopyItems(d model.IssueDetail, sidebar []config.SidebarField, link *m
 	add("Created", d.Created)
 	add("Updated", d.Updated)
 
-	// Sidebar fields already covered by the core fields above.
-	core := map[string]bool{
-		"key": true, "summary": true, "issuetype": true, "status": true, "priority": true,
-		"assignee": true, "duedate": true, "created": true, "updated": true,
+	// Skip sidebar fields whose value is already listed above (the core
+	// struct fields aren't always populated, so check the value, not the ID).
+	seen := map[string]bool{
+		"key": d.Key != "", "summary": d.Summary != "", "issuetype": d.Type != "",
+		"status": d.Status != "", "priority": d.Priority != "", "assignee": d.Assignee != "",
+		"duedate": d.DueDate != "", "created": d.Created != "", "updated": d.Updated != "",
 	}
 	for _, sf := range sidebar {
-		if core[sf.Field] {
+		if seen[sf.Field] {
 			continue
 		}
-		core[sf.Field] = true
+		seen[sf.Field] = true
 		label := sf.Label
 		if label == "" {
 			label = fieldDisplayLabel(sf.Field)
