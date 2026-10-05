@@ -206,6 +206,9 @@ func (d Detail) Init() tea.Cmd {
 
 func (d Detail) IssueKey() string { return d.issue.Key }
 
+// Issue returns the displayed issue.
+func (d Detail) Issue() model.IssueDetail { return d.issue }
+
 // AppendLinks adds links to the issue (used for async child-issue fetch).
 func (d Detail) AppendLinks(links []model.IssueLink) Detail {
 	d.issue.Links = append(d.issue.Links, links...)

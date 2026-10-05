@@ -53,6 +53,7 @@ type Keybindings struct {
 	ForceRefresh  string `yaml:"force_refresh"`
 	Help          string `yaml:"help"`
 	Sort          string `yaml:"sort"` // list-view sort picker (list view only; 's' also defaults transition in detail view)
+	Copy          string `yaml:"copy"` // pick fields/URL to copy to the clipboard
 }
 
 type Config struct {
@@ -207,6 +208,9 @@ func (c *Config) applyDefaults() {
 	}
 	if kb.Sort == "" {
 		kb.Sort = "s"
+	}
+	if kb.Copy == "" {
+		kb.Copy = "Y"
 	}
 }
 

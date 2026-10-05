@@ -20,11 +20,10 @@ type jiraCLIConfigFile struct {
 	Login  string `yaml:"login"`
 }
 
-// resolveJiraCredentials returns the Jira base URL, login email, and API token.
-// cfgURL (from our config) overrides the server found in jira-cli's config file.
-// Token is read from JIRA_API_TOKEN env var, then via secret-tool (GNOME keyring).
-func resolveJiraCredentials(cfgURL string) (baseURL, email, token string, err error) {
-	// Read jira-cli's config for server + login.
+// resolveJiraServer returns the Jira base URL (with scheme, no trailing slash)
+// and the login email from jira-cli's config file. cfgURL, when set, overrides
+// the server found there.
+func resolveJiraServer(cfgURL string) (baseURL, email string) {
 	if home, herr := os.UserHomeDir(); herr == nil {
 		data, ferr := os.ReadFile(filepath.Join(home, ".config", ".jira", ".config.yml"))
 		if ferr == nil {
@@ -42,6 +41,24 @@ func resolveJiraCredentials(cfgURL string) (baseURL, email, token string, err er
 	if baseURL != "" && !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
 		baseURL = "https://" + baseURL
 	}
+	return baseURL, email
+}
+
+// IssueURL returns the browser URL of an issue ("<server>/browse/<key>"),
+// or "" when no Jira server is configured.
+func IssueURL(cfgURL, key string) string {
+	baseURL, _ := resolveJiraServer(cfgURL)
+	if baseURL == "" || key == "" {
+		return ""
+	}
+	return baseURL + "/browse/" + key
+}
+
+// resolveJiraCredentials returns the Jira base URL, login email, and API token.
+// cfgURL (from our config) overrides the server found in jira-cli's config file.
+// Token is read from JIRA_API_TOKEN env var, then via secret-tool (GNOME keyring).
+func resolveJiraCredentials(cfgURL string) (baseURL, email, token string, err error) {
+	baseURL, email = resolveJiraServer(cfgURL)
 	if baseURL == "" {
 		err = fmt.Errorf("jira server URL not configured; set backend.url in config or run 'jira init'")
 		return

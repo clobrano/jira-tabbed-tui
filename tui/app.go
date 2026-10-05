@@ -40,6 +40,7 @@ const (
 	overlayAssign        overlayMode = iota
 	overlayOptionPicker  overlayMode = iota
 	overlayFieldText     overlayMode = iota
+	overlayCopy          overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -80,6 +81,7 @@ type App struct {
 	assign       actions.AssignModel
 	optionPicker actions.OptionPickerModel
 	fieldTextM   actions.FieldTextModel
+	copyM        actions.CopyModel
 	addTabM      actions.AddTabModel
 	editJQLM     actions.EditJQLModel
 	deleteTabIdx int // tab index pending confirmation
@@ -428,6 +430,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		tabName := a.currentTabName()
 		return a, backend.AddCommentCmd(a.runner, msg.IssueKey, msg.Body, tabName)
 
+	case actions.CopyConfirmedMsg:
+		a.overlay = overlayNone
+		if msg.Text == "" {
+			a.statusLine = a.statusLine.SetMessage("nothing to copy: "+strings.Join(msg.Labels, ", ")+" is empty", true)
+			return a, nil
+		}
+		return a, copyToClipboardCmd(msg.Text, strings.Join(msg.Labels, ", "))
+
+	case actions.CopyCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
+	case clipboardDoneMsg:
+		m := "copied " + msg.what
+		if msg.osc {
+			m += " (via terminal OSC 52)"
+		}
+		a.statusLine = a.statusLine.SetMessage(m, false)
+		return a, nil
+
 	case actions.CommentCancelledMsg:
 		a.overlay = overlayNone
 		return a, nil
@@ -650,6 +672,14 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 
+	case a.cfg.Keybindings.Copy:
+		if iss, ok := tab.list.SelectedIssue(); ok {
+			items := listCopyItems(tab.list.Columns(), iss, a.cfg.Backend.URL)
+			a.copyM = actions.NewCopyModel("Copy · "+iss.Key, items).SetSize(a.width, a.height)
+			a.overlay = overlayCopy
+			return a, nil
+		}
+
 	case a.cfg.Keybindings.Sort:
 		sf := a.sortableFields()
 		a.sortCursor = 0
@@ -730,6 +760,19 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case a.cfg.Keybindings.OpenBrowser:
 		return a, a.openBrowserCmd(a.detail.IssueKey())
 
+	case a.cfg.Keybindings.Copy:
+		if a.detail.IssueKey() == "" {
+			return a, nil
+		}
+		var link *model.IssueLink
+		if l, ok := a.detail.SelectedLink(); ok {
+			link = &l
+		}
+		items := detailCopyItems(a.detail.Issue(), a.cfg.Detail.SidebarFields, link, a.cfg.Backend.URL)
+		a.copyM = actions.NewCopyModel("Copy · "+a.detail.IssueKey(), items).SetSize(a.width, a.height)
+		a.overlay = overlayCopy
+		return a, nil
+
 	case a.cfg.Keybindings.FieldDiscover:
 		key := a.detail.IssueKey()
 		return a, func() tea.Msg {
@@ -764,6 +807,11 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlayOptionPicker:
 		var cmd tea.Cmd
 		a.optionPicker, cmd = a.optionPicker.Update(msg)
+		return a, cmd
+
+	case overlayCopy:
+		var cmd tea.Cmd
+		a.copyM, cmd = a.copyM.Update(msg)
 		return a, cmd
 
 	case overlayFieldText:
@@ -923,6 +971,8 @@ func (a App) View() string {
 		return a.assign.View()
 	case overlayOptionPicker:
 		return a.optionPicker.View()
+	case overlayCopy:
+		return a.copyM.View()
 	case overlayFieldText:
 		return a.fieldTextM.View()
 	case overlayLabels:
@@ -991,8 +1041,8 @@ func (a App) listHint() string {
 		if tab.search.IsFocused() {
 			return "Enter run JQL · Tab/←→ switch tabs · ? help · q quit"
 		}
-		return fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s sort · Q edit JQL · Tab/←→ tabs · ? help · q quit",
-			a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Sort)
+		return fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s copy · %s sort · Q edit JQL · Tab/←→ tabs · ? help · q quit",
+			a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Copy, a.cfg.Keybindings.Sort)
 	}
 	if tab.list.IsFilterActive() {
 		return "type to filter · Enter confirm · Esc clear"
@@ -1000,8 +1050,8 @@ func (a App) listHint() string {
 	if tab.list.IsFilterApplied() {
 		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
 	}
-	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
-		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Sort)
+	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s copy · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
+		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Copy, a.cfg.Keybindings.Sort)
 	if tab.list.SortField() != "" {
 		dir := "▲"
 		if !tab.list.SortAsc() {
@@ -1034,8 +1084,8 @@ func (a App) detailHint() string {
 	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
 		target = " " + key
 	}
-	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status%s · %s assign%s · %s labels · %s comment · F fields · %s browser · Esc list · ? help",
-		kb.Transition, target, kb.Assign, target, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
+	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status%s · %s assign%s · %s labels · %s comment · %s copy · F fields · %s browser · Esc list · ? help",
+		kb.Transition, target, kb.Assign, target, kb.AddLabels, kb.AddComment, kb.Copy, kb.OpenBrowser)
 	var nav []string
 	if a.detailHistIdx > 0 {
 		nav = append(nav, "⌫/ctrl+o back")
@@ -1604,6 +1654,8 @@ func (a App) resizeAll() App {
 		a.addTabM = a.addTabM.SetSize(a.width, a.height)
 	case overlayEditJQL:
 		a.editJQLM = a.editJQLM.SetSize(a.width, a.height)
+	case overlayCopy:
+		a.copyM = a.copyM.SetSize(a.width, a.height)
 	}
 	for i := range a.tabs {
 		if a.tabs[i].isSearch {

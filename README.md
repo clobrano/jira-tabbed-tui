@@ -174,6 +174,7 @@ keybindings:
   force_refresh: r     # refresh the current tab
   help: "?"            # toggle the help overlay
   sort: s              # open the sort picker (list view)
+  copy: Y              # copy fields / URL to the clipboard
 ```
 
 ### Custom fields in the sidebar
@@ -219,6 +220,7 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | `o` | Open in browser (without entering detail)   |
 | `m` | Change status                               |
 | `a` | Assign issue                                |
+| `Y` | Copy column values / issue URL              |
 | `s` | Sort the list                               |
 
 ### Detail view
@@ -235,11 +237,32 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | `a`              | Assign issue (the highlighted linked issue on the Links tab)     |
 | `l`              | Add labels                                               |
 | `c`              | Add a comment                                            |
+| `Y`              | Copy issue fields / URL                                  |
 | `F`              | List all fields for the issue                            |
 | `Ctrl+e`         | Edit the highlighted field (in the Fields overlay)       |
 
 *(Action keys reflect the defaults; they follow whatever you set under
 `keybindings` in your config.)*
+
+### Copying to the clipboard
+
+`Y` opens a picker of what can be copied from the current view:
+
+- **List view** — one entry per displayed column, in column order, plus the
+  issue's full URL.
+- **Detail view** — the issue's fields (key, summary, type, status, priority,
+  assignee, dates, your sidebar fields, description), plus the full URL. On
+  the Links tab the highlighted link's key/URL are offered too.
+
+In the picker, `1`–`9` copy that entry right away and `u` copies the URL.
+`Space` marks several entries (`a` marks all) and `Enter` copies them joined
+by a space, newline or tab (cycle with `Tab`); with nothing marked `Enter`
+copies the highlighted entry.
+
+The clipboard is written with `xclip`/`xsel`/`wl-copy` (Linux) or `pbcopy`
+(macOS); when none is available (e.g. over SSH) the OSC 52 terminal escape
+sequence is used instead. The URL needs a Jira server, taken from
+`backend.url` or jira-cli's config.
 
 ## How it works
 
