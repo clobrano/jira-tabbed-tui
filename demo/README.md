@@ -18,23 +18,21 @@ demo/
 
 Prerequisites:
 
-- [`vhs`](https://github.com/charmbracelet/vhs) (and its dependencies, `ttyd`
-  and `ffmpeg`)
-- The `jira-tui` binary on your `PATH`
+- [`vhs`](https://github.com/charmbracelet/vhs) v0.8+ (and its dependencies,
+  `ttyd` and `ffmpeg`)
+- Go, to build the TUI
 
 From the repository root:
 
 ```sh
-# 1. Build and install the binary so `vhs` can find it.
-go build -o jira-tui .
-sudo mv jira-tui /usr/local/bin/      # or anywhere on your PATH
-
-# 2. Record the GIF.
 vhs demo/demo.tape
 ```
 
-The tape prepends `demo/bin` to `PATH` so the mock `jira` shadows any real one
-for the duration of the recording, launches `jira-tui --config demo/config.yaml`,
+You don't need the app installed: the tape builds it from the checkout into a
+temporary directory first, so the recording always reflects the current source.
+It prepends that directory and `demo/bin` to `PATH` so the mock `jira` shadows
+any real one for the duration of the recording, launches
+`jira-tabbed-tui --config demo/config.yaml`,
 then browses the board, switches tabs, copies an issue URL with the copy picker
 (`Y` then `u`), opens an issue, copies its key and summary (`Y`, mark both,
 `Enter`), and shows the help overlay. Output is written to `demo/demo.gif`.
