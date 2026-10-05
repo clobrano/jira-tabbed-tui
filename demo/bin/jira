@@ -6,7 +6,8 @@
 # reads and writes. This script stands in for that binary and returns canned,
 # deterministic JSON, so the demo GIF can be recorded with no live Jira instance,
 # no network, and no credentials. It implements just enough of the CLI surface
-# that the TUI exercises: `me`, `issue list --raw`, and `issue view --raw`.
+# that the TUI exercises: `me`, `issue list --raw`, `issue view --raw`, and
+# `issue move` (which is remembered, see "demo state" below).
 #
 # It is NOT a real Jira client — do not put it on your PATH for actual use.
 
@@ -22,11 +23,71 @@ if [[ "$args" == me* ]]; then
   exit 0
 fi
 
+# ---- demo state --------------------------------------------------------------
+# `issue move KEY STATUS` records the new status in $JIRA_DEMO_STATE (one
+# "KEY<TAB>STATUS" line per move) so later reads — and the mock REST API in
+# demo/mock-jira-api.py — reflect the change.
+state="${JIRA_DEMO_STATE:-${TMPDIR:-/tmp}/jira-tabbed-tui-demo.state}"
+
+# status_of KEY DEFAULT — the issue's current status.
+status_of() {
+  local s=""
+  [[ -f "$state" ]] && s="$(awk -F'\t' -v k="$1" '$1 == k { v = $2 } END { print v }' "$state")"
+  echo "${s:-$2}"
+}
+
+if [[ "$args" == issue\ move* ]]; then
+  # Args are: issue move KEY STATUS...
+  printf '%s\t%s\n' "$3" "${*:4}" >>"$state"
+  exit 0
+fi
+
 # ---- issue view KEY --raw ---------------------------------------------------
 # Full detail for a single issue: description, comments, subtasks, links.
 if [[ "$args" == issue\ view* ]]; then
   # Args are: issue view KEY --raw  -> the key is the 3rd positional arg.
   key="${3:-PLATFORM-142}"
+
+  # Linked issues get their own (smaller) detail so navigating into them from
+  # the Links tab shows a different issue.
+  case "$key" in
+    PLATFORM-151|PLATFORM-152|PLATFORM-98)
+      case "$key" in
+        PLATFORM-151) sum="Add session-ready guard before first paint"; typ="Sub-task"; st="In Progress"; who="Dana Reyes"
+          desc="Delay mounting the login form until the session cookie has been read back, so Safari stops rendering it twice." ;;
+        PLATFORM-152) sum="Add Safari smoke test to CI"; typ="Sub-task"; st="To Do"; who="Sam Okafor"
+          desc="Run the OAuth login flow in Safari on every PR so the flicker cannot regress." ;;
+        PLATFORM-98)  sum="Migrate auth to new session service"; typ="Story"; st="Done"; who="Priya Nair"
+          desc="Move login and token refresh onto the new session service." ;;
+      esac
+      cat <<JSON
+{
+  "key": "$key",
+  "fields": {
+    "summary": "$sum",
+    "issuetype": { "name": "$typ" },
+    "priority": { "name": "Medium" },
+    "status": { "name": "$(status_of "$key" "$st")" },
+    "assignee": { "displayName": "$who" },
+    "reporter": { "displayName": "Dana Reyes" },
+    "labels": ["frontend"],
+    "created": "2026-09-12T10:00:00.000+0000",
+    "updated": "2026-09-18T12:00:00.000+0000",
+    "description": "$desc",
+    "comment": { "comments": [] },
+    "issuelinks": [
+      {
+        "type": { "inward": "is blocked by", "outward": "blocks" },
+        "outwardIssue": { "key": "PLATFORM-142", "fields": { "summary": "Login page flickers on Safari during OAuth redirect", "status": { "name": "$(status_of PLATFORM-142 "In Progress")" } } }
+      }
+    ]
+  }
+}
+JSON
+      exit 0
+      ;;
+  esac
+
   cat <<JSON
 {
   "key": "$key",
@@ -34,7 +95,7 @@ if [[ "$args" == issue\ view* ]]; then
     "summary": "Login page flickers on Safari during OAuth redirect",
     "issuetype": { "name": "Bug" },
     "priority": { "name": "High" },
-    "status": { "name": "In Progress" },
+    "status": { "name": "$(status_of "$key" "In Progress")" },
     "assignee": { "displayName": "Dana Reyes" },
     "reporter": { "displayName": "Sam Okafor" },
     "labels": ["frontend", "safari", "oauth"],
@@ -57,22 +118,13 @@ if [[ "$args" == issue\ view* ]]; then
       ]
     },
     "subtasks": [
-      {
-        "key": "PLATFORM-151",
-        "fields": { "summary": "Add session-ready guard before first paint", "status": { "name": "In Progress" } }
-      },
-      {
-        "key": "PLATFORM-152",
-        "fields": { "summary": "Add Safari smoke test to CI", "status": { "name": "To Do" } }
-      }
+      { "key": "PLATFORM-151", "fields": { "summary": "Add session-ready guard before first paint", "status": { "name": "$(status_of PLATFORM-151 "In Progress")" } } },
+      { "key": "PLATFORM-152", "fields": { "summary": "Add Safari smoke test to CI", "status": { "name": "$(status_of PLATFORM-152 "To Do")" } } }
     ],
     "issuelinks": [
       {
         "type": { "inward": "is blocked by", "outward": "blocks" },
-        "outwardIssue": {
-          "key": "PLATFORM-98",
-          "fields": { "summary": "Migrate auth to new session service", "status": { "name": "Done" } }
-        }
+        "outwardIssue": { "key": "PLATFORM-98", "fields": { "summary": "Migrate auth to new session service", "status": { "name": "$(status_of PLATFORM-98 "Done")" } } }
       }
     ]
   }
@@ -86,12 +138,17 @@ fi
 # tabs feel distinct. jira-cli --raw returns the API wrapper object.
 if [[ "$args" == issue\ list* ]]; then
 
-  # Child-issue lookup used by the detail view (parent = KEY).
+  # Child-issue lookup used by the detail view (parent = KEY). Only the main
+  # demo issue has children; they are also its subtasks, as in real Jira.
   if [[ "$args" == *"parent ="* ]]; then
-    cat <<'JSON'
+    if [[ "$args" != *"parent = PLATFORM-142"* ]]; then
+      echo '{ "total": 0, "issues": [] }'
+      exit 0
+    fi
+    cat <<JSON
 { "total": 2, "issues": [
-  { "key": "PLATFORM-151", "fields": { "summary": "Add session-ready guard before first paint", "issuetype": {"name":"Sub-task"}, "priority": {"name":"High"}, "status": {"name":"In Progress"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-12T10:00:00.000+0000", "updated":"2026-09-18T12:00:00.000+0000", "labels":[] } },
-  { "key": "PLATFORM-152", "fields": { "summary": "Add Safari smoke test to CI", "issuetype": {"name":"Sub-task"}, "priority": {"name":"Medium"}, "status": {"name":"To Do"}, "assignee": null, "created":"2026-09-12T10:05:00.000+0000", "updated":"2026-09-12T10:05:00.000+0000", "labels":[] } }
+  { "key": "PLATFORM-151", "fields": { "summary": "Add session-ready guard before first paint", "issuetype": {"name":"Sub-task"}, "priority": {"name":"High"}, "status": {"name":"$(status_of PLATFORM-151 "In Progress")"}, "assignee": {"displayName":"Dana Reyes"}, "created":"2026-09-12T10:00:00.000+0000", "updated":"2026-09-18T12:00:00.000+0000", "labels":[] } },
+  { "key": "PLATFORM-152", "fields": { "summary": "Add Safari smoke test to CI", "issuetype": {"name":"Sub-task"}, "priority": {"name":"Medium"}, "status": {"name":"$(status_of PLATFORM-152 "To Do")"}, "assignee": null, "created":"2026-09-12T10:05:00.000+0000", "updated":"2026-09-12T10:05:00.000+0000", "labels":[] } }
 ]}
 JSON
     exit 0

@@ -2,7 +2,9 @@
 # It points the TUI at the mock `jira` backend in demo/bin.
 backend:
   cli: jira
-  url: https://demo.atlassian.net
+  # Mock REST API started by demo.tape (demo/mock-jira-api.py); it serves the
+  # status picker's transitions and the web links.
+  url: http://localhost:8642
 
 tabs:
   - name: Assigned
