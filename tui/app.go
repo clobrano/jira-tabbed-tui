@@ -53,6 +53,12 @@ type tabState struct {
 	isSearch bool
 }
 
+// pendingViewState is a history entry's saved view, applied when its issue loads.
+type pendingViewState struct {
+	key  string
+	view DetailViewState
+}
+
 // FieldsOverlayMsg is sent to open the field-discovery overlay.
 type FieldsOverlayMsg struct {
 	Fields []model.Field
@@ -91,6 +97,8 @@ type App struct {
 	sortCursor    int             // cursor in the sort picker overlay
 	detailHistory []string        // issue keys navigated in the current detail session
 	detailHistIdx int             // current position in detailHistory (-1 = empty)
+	detailHistView []DetailViewState // body tab/link cursor last seen at each history entry
+	pendingView   *pendingViewState  // view to restore once a back/forward fetch lands
 	fields        []model.Field
 	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
 	fieldOriginal map[string]bool // snapshot when overlay opened
@@ -211,7 +219,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
 		} else {
-			a.statusLine = a.statusLine.SetMessage("", false)
+			a.statusLine = a.statusLine.ClearError()
 		}
 		return a, nil
 
@@ -223,7 +231,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.detail = a.detail.SetIssue(msg.Issue)
-		a.statusLine = a.statusLine.SetMessage("", false)
+		if p := a.pendingView; p != nil && p.key == msg.Issue.Key {
+			a.detail = a.detail.RestoreViewState(p.view)
+			a.pendingView = nil
+		}
+		a.statusLine = a.statusLine.ClearError()
 		// Fetch children and web/remote links in parallel.
 		return a, tea.Batch(
 			backend.FetchChildrenCmd(a.runner, msg.Issue.Key),
@@ -233,16 +245,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── children fetched ─────────────────────────────────────────────────────
 	case backend.ChildrenFetchedMsg:
 		if msg.Err == nil && len(msg.Children) > 0 && a.detail.IssueKey() == msg.ParentKey {
-			links := make([]model.IssueLink, len(msg.Children))
-			for i, ch := range msg.Children {
-				links[i] = model.IssueLink{
+			// Sub-tasks come back both in the issue's own subtasks list and
+			// from the parent query; list each issue only once.
+			listed := map[string]bool{}
+			for _, l := range a.detail.Issue().Links {
+				if l.URL == "" {
+					listed[l.Key] = true
+				}
+			}
+			var links []model.IssueLink
+			for _, ch := range msg.Children {
+				if listed[ch.Key] {
+					continue
+				}
+				links = append(links, model.IssueLink{
 					Type:    "child issue",
 					Key:     ch.Key,
 					Summary: ch.Summary,
 					Status:  ch.Status,
-				}
+				})
 			}
-			a.detail = a.detail.AppendLinks(links)
+			if len(links) > 0 {
+				a.detail = a.detail.AppendLinks(links)
+			}
 		}
 		return a, nil
 
@@ -518,7 +543,9 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case a.view == viewDetail:
 			a.view = viewList
 			a.detailHistory = nil
+			a.detailHistView = nil
 			a.detailHistIdx = -1
+			a.pendingView = nil
 			return a, nil
 		case a.view == viewList && a.activeTab < len(a.tabs):
 			tab := &a.tabs[a.activeTab]
@@ -708,18 +735,12 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "backspace", "ctrl+o":
 		if a.detailHistIdx > 0 {
-			a.detailHistIdx--
-			key := a.detailHistory[a.detailHistIdx]
-			a.detail = a.detail.SetLoading(true)
-			return a, a.cache.FetchDetailCmd(a.runner, key)
+			return a.moveHistory(-1)
 		}
 
 	case "ctrl+i", "tab":
 		if a.detailHistIdx < len(a.detailHistory)-1 {
-			a.detailHistIdx++
-			key := a.detailHistory[a.detailHistIdx]
-			a.detail = a.detail.SetLoading(true)
-			return a, a.cache.FetchDetailCmd(a.runner, key)
+			return a.moveHistory(1)
 		}
 
 	case "left":
@@ -1379,10 +1400,35 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 
 // pushHistory records a new navigation target, truncating any forward history.
 func (a App) pushHistory(key string) App {
+	a = a.saveHistoryView()
 	// Keep everything up to (and including) current position, then append new key.
 	a.detailHistory = append(a.detailHistory[:a.detailHistIdx+1], key)
+	a.detailHistView = append(a.detailHistView[:a.detailHistIdx+1], DetailViewState{})
 	a.detailHistIdx = len(a.detailHistory) - 1
+	a.pendingView = nil
 	return a
+}
+
+// saveHistoryView remembers the current body tab/link cursor for the current
+// history entry, so coming back to it lands where the user left.
+func (a App) saveHistoryView() App {
+	if a.detailHistIdx >= 0 && a.detailHistIdx < len(a.detailHistView) {
+		views := append([]DetailViewState(nil), a.detailHistView...)
+		views[a.detailHistIdx] = a.detail.ViewState()
+		a.detailHistView = views
+	}
+	return a
+}
+
+// moveHistory navigates back (dir=-1) or forward (dir=1) in the detail
+// history and restores that entry's body tab and link cursor once it loads.
+func (a App) moveHistory(dir int) (App, tea.Cmd) {
+	a = a.saveHistoryView()
+	a.detailHistIdx += dir
+	key := a.detailHistory[a.detailHistIdx]
+	a.pendingView = &pendingViewState{key: key, view: a.detailHistView[a.detailHistIdx]}
+	a.detail = a.detail.SetLoading(true)
+	return a, a.cache.FetchDetailCmd(a.runner, key)
 }
 
 // detailActionTarget returns the issue key that move/assign should act on in

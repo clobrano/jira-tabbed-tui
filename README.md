@@ -234,7 +234,7 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | Key              | Action                                                    |
 | ---------------- | -------------------------------------------------------- |
 | `Esc`            | Back to list (clears navigation history)                 |
-| `⌫` / `Ctrl+o`   | Navigate back in history                                 |
+| `⌫` / `Ctrl+o`   | Navigate back in history (returns to the tab and link you left) |
 | `Ctrl+i`         | Navigate forward in history                              |
 | `←` / `→`        | Switch body tab (Description / Comments / Links)         |
 | `Enter`          | Open the linked issue (on the Links tab)                 |

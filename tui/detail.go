@@ -46,6 +46,13 @@ const (
 	bodyTabCount // sentinel — keep last
 )
 
+// DetailViewState is the part of the detail view restored when navigating
+// back/forward through history: the active body tab and the link cursor.
+type DetailViewState struct {
+	bodyTab    detailBodyTab
+	linkCursor int
+}
+
 // BackToListMsg is sent when the user presses Esc in the detail view.
 type BackToListMsg struct{}
 
@@ -116,6 +123,25 @@ func (d Detail) SetIssue(issue model.IssueDetail) Detail {
 	d.linkCursor = 0
 	d.vp.SetContent(d.bodyContent(d.vp.Width))
 	d.vp.GotoTop()
+	return d
+}
+
+// ViewState returns the current body tab and link cursor.
+func (d Detail) ViewState() DetailViewState {
+	return DetailViewState{bodyTab: d.bodyTab, linkCursor: d.linkCursor}
+}
+
+// RestoreViewState re-applies a state saved with ViewState. The link cursor
+// may point past the links loaded so far; children and remote links are
+// appended asynchronously and the cursor lands on them once they arrive.
+func (d Detail) RestoreViewState(s DetailViewState) Detail {
+	d.bodyTab = s.bodyTab
+	d.linkCursor = s.linkCursor
+	d.vp.SetContent(d.bodyContent(d.vp.Width))
+	d.vp.GotoTop()
+	if d.bodyTab == bodyTabLinks {
+		d.scrollLinkIntoView()
+	}
 	return d
 }
 

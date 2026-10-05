@@ -22,6 +22,15 @@ func (s StatusLine) SetMessage(msg string, isError bool) StatusLine {
 	return s
 }
 
+// ClearError removes the message if it is an error, keeping confirmations
+// such as "transition succeeded" visible across the refetch that follows them.
+func (s StatusLine) ClearError() StatusLine {
+	if s.isError {
+		return s.SetMessage("", false)
+	}
+	return s
+}
+
 func (s StatusLine) SetHint(hint string) StatusLine {
 	s.hint = hint
 	return s
