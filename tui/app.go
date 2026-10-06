@@ -259,10 +259,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					continue
 				}
 				links = append(links, model.IssueLink{
-					Type:    "child issue",
-					Key:     ch.Key,
-					Summary: ch.Summary,
-					Status:  ch.Status,
+					Type:      "child issue",
+					Key:       ch.Key,
+					Summary:   ch.Summary,
+					Status:    ch.Status,
+					IssueType: ch.Type,
 				})
 			}
 			if len(links) > 0 {
@@ -275,6 +276,22 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case backend.RemoteLinksFetchedMsg:
 		if msg.Err == nil && len(msg.Links) > 0 && a.detail.IssueKey() == msg.IssueKey {
 			a.detail = a.detail.AppendLinks(msg.Links)
+			var prs []string
+			for _, l := range msg.Links {
+				if backend.IsPullRequestURL(l.URL) {
+					prs = append(prs, l.URL)
+				}
+			}
+			if len(prs) > 0 {
+				return a, backend.FetchPullRequestStatesCmd(msg.IssueKey, prs)
+			}
+		}
+		return a, nil
+
+	// ── pull request states fetched ──────────────────────────────────────────
+	case backend.PullRequestStatesFetchedMsg:
+		if a.detail.IssueKey() == msg.IssueKey {
+			a.detail = a.detail.SetPullRequestStates(msg.States)
 		}
 		return a, nil
 
@@ -1090,7 +1107,8 @@ func (a App) detailView() string {
 	if contentH < 1 {
 		contentH = 1
 	}
-	d := a.detail.SetSize(a.width, contentH, a.cfg.Detail.SidebarWidth)
+	d := a.detail.SetBreadcrumb(a.detailHistory, a.detailHistIdx).
+		SetSize(a.width, contentH, a.cfg.Detail.SidebarWidth)
 	return lipgloss.JoinVertical(lipgloss.Left,
 		tabBarView,
 		d.View(),

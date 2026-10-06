@@ -102,8 +102,8 @@ func TestChildrenAlreadyListedAsSubtasksAreNotDuplicated(t *testing.T) {
 	for _, l := range a.detail.Issue().Links {
 		keys = append(keys, l.Key)
 	}
-	if len(keys) != 2 || keys[0] != "S-1" || keys[1] != "E-1" {
-		t.Fatalf("links = %v, want [S-1 E-1]", keys)
+	if len(keys) != 2 || keys[0] != "E-1" || keys[1] != "S-1" {
+		t.Fatalf("links = %v, want [E-1 S-1] (deduplicated, sorted by key)", keys)
 	}
 }
 

@@ -26,6 +26,10 @@ talks to the Jira REST API directly for the few things the CLI can't do.
 - **Rich detail view** — description, comments, and links (including subtasks and
   remote/web links) split across body tabs, with a configurable sidebar of
   fields.
+- **Organised links** — the Links tab groups Jira issues, pull requests and
+  other web links, sorts them, shows each linked issue's type, and shows
+  whether linked GitHub/GitLab pull requests are open, merged or closed.
+  Follow links as deep as you like; a breadcrumb shows where you are.
 - **Write actions from the terminal** — change status (transitions), assign
   users, add labels, and post comments without leaving the app. On the Links
   tab, move or assign the highlighted linked issue without opening it.
@@ -118,6 +122,15 @@ config.
 
 > Generate an API token at
 > <https://id.atlassian.com/manage-profile/security/api-tokens>.
+
+### Pull request status (optional)
+
+To show whether linked pull requests are open, merged or closed, the app asks
+GitHub (`api.github.com`, or `$GITHUB_API_URL` / `https://HOST/api/v3` for
+GitHub Enterprise on a `github.*` host) or GitLab (`https://HOST/api/v4`).
+Public repositories work without credentials; for private ones set
+**`GITHUB_TOKEN`** (or `GH_TOKEN`) and/or **`GITLAB_TOKEN`**. Lookups are cached
+for 5 minutes. If a lookup fails the status is simply left blank.
 
 ## Configuration
 
@@ -249,6 +262,25 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 
 *(Action keys reflect the defaults; they follow whatever you set under
 `keybindings` in your config.)*
+
+### The Links tab
+
+Links are grouped and sorted:
+
+- **Jira issues** — subtasks, child issues and issue links, sorted by key
+  (`PROJ-9` before `PROJ-10`), with the relationship, the issue **type** and its
+  status.
+- **Pull requests** — GitHub pull requests and GitLab merge requests, with
+  their state: `open`, `draft`, `merged` or `closed`
+  (see [Pull request status](#pull-request-status-optional)).
+- **Web links** — any other remote link, sorted by title.
+
+`Enter` opens a Jira link in place (or a web link in the browser). Each issue
+you open this way is added to a history: `⌫`/`Ctrl+o` goes back and `Ctrl+i`
+forward, returning to the same tab and highlighted link. Once you are more than
+one issue deep, a breadcrumb above the header shows the trail and your depth,
+e.g. `depth 2/3  PROJ-1 › PROJ-7 › PROJ-9`, with the current issue highlighted
+and the ones you can go forward to dimmed.
 
 ### Copying to the clipboard
 
