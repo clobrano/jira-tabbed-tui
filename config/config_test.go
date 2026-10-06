@@ -119,3 +119,42 @@ tabs:
 		t.Errorf("expected default help key=?, got %q", cfg.Keybindings.Help)
 	}
 }
+
+func TestDefaultPath(t *testing.T) {
+	newPath := func(home string) string { return filepath.Join(home, ".config", "jira-tabbed-tui", "config.yaml") }
+	legacyPath := func(home string) string { return filepath.Join(home, ".config", "jira-tui", "config.yaml") }
+	write := func(t *testing.T, p string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("tabs: []\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("fresh install uses new path", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if got := config.DefaultPath(); got != newPath(home) {
+			t.Errorf("DefaultPath() = %q, want %q", got, newPath(home))
+		}
+	})
+	t.Run("legacy config is still used", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		write(t, legacyPath(home))
+		if got := config.DefaultPath(); got != legacyPath(home) {
+			t.Errorf("DefaultPath() = %q, want %q", got, legacyPath(home))
+		}
+	})
+	t.Run("new config wins over legacy", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		write(t, legacyPath(home))
+		write(t, newPath(home))
+		if got := config.DefaultPath(); got != newPath(home) {
+			t.Errorf("DefaultPath() = %q, want %q", got, newPath(home))
+		}
+	})
+}

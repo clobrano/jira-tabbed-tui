@@ -17,7 +17,7 @@ var version = "dev"
 var configPath string
 
 var rootCmd = &cobra.Command{
-	Use:   "jira-tui",
+	Use:   "jira-tabbed-tui",
 	Short: "A keyboard-driven Jira TUI",
 	Long:  `A fast, keyboard-driven terminal UI for Jira, driven by your existing Jira CLI.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -67,7 +67,7 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "path to config.yaml (default: ~/.config/jira-tui/config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "path to config.yaml (default: ~/.config/jira-tabbed-tui/config.yaml)")
 	rootCmd.Version = version
 	rootCmd.AddCommand(fieldsCmd)
 }

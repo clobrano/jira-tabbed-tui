@@ -26,8 +26,16 @@ talks to the Jira REST API directly for the few things the CLI can't do.
 - **Rich detail view** — description, comments, and links (including subtasks and
   remote/web links) split across body tabs, with a configurable sidebar of
   fields.
+- **Organised links** — the Links tab groups Jira issues, pull requests and
+  other web links, sorts them, shows each linked issue's type, and shows
+  whether linked GitHub/GitLab pull requests are open, merged or closed.
+  Follow links as deep as you like; a breadcrumb shows where you are.
 - **Write actions from the terminal** — change status (transitions), assign
-  users, add labels, and post comments without leaving the app.
+  users, add labels, and post comments without leaving the app. On the Links
+  tab, move or assign the highlighted linked issue without opening it.
+- **Copy to clipboard** — press `Y` to pick which column values or issue
+  fields to copy, or grab the issue's full URL with `Y` `u`
+  (see [Copying to the clipboard](#copying-to-the-clipboard)).
 - **Fuzzy filtering** — instantly narrow the loaded rows with `/`.
 - **Sorting** — reorder the current list by any column.
 - **ADF rendering** — Atlassian Document Format bodies (Jira Cloud) are rendered
@@ -56,10 +64,10 @@ talks to the Jira REST API directly for the few things the CLI can't do.
 ```sh
 git clone https://github.com/clobrano/jira-tabbed-tui.git
 cd jira-tabbed-tui
-go build -o jira-tui .
+go build -o jira-tabbed-tui .
 ```
 
-Then move the resulting `jira-tui` binary somewhere on your `PATH`.
+Then move the resulting `jira-tabbed-tui` binary somewhere on your `PATH`.
 
 ### With `go install`
 
@@ -87,11 +95,11 @@ This installs a binary named `jira-tabbed-tui` into `$(go env GOPATH)/bin`.
 3. Run it:
 
    ```sh
-   jira-tui
+   jira-tabbed-tui
    ```
 
    On first launch, if no config file exists, a sensible default is written to
-   `~/.config/jira-tui/config.yaml` and the app starts with two tabs:
+   `~/.config/jira-tabbed-tui/config.yaml` and the app starts with two tabs:
    *Assigned* and *In Progress*.
 
 At startup the app verifies that the CLI binary is on your `PATH` and runs a
@@ -115,11 +123,22 @@ config.
 > Generate an API token at
 > <https://id.atlassian.com/manage-profile/security/api-tokens>.
 
+### Pull request status (optional)
+
+To show whether linked pull requests are open, merged or closed, the app asks
+GitHub (`api.github.com`, or `$GITHUB_API_URL` / `https://HOST/api/v3` for
+GitHub Enterprise on a `github.*` host) or GitLab (`https://HOST/api/v4`).
+Public repositories work without credentials; for private ones set
+**`GITHUB_TOKEN`** (or `GH_TOKEN`) and/or **`GITLAB_TOKEN`**. Lookups are cached
+for 5 minutes. If a lookup fails the status is simply left blank.
+
 ## Configuration
 
-Configuration lives at `~/.config/jira-tui/config.yaml` by default (override with
-`--config /path/to/config.yaml`). The file is created with defaults on first run
-if it doesn't exist.
+Configuration lives at `~/.config/jira-tabbed-tui/config.yaml` by default
+(override with `--config /path/to/config.yaml`). The file is created with
+defaults on first run if it doesn't exist. Configs from older releases at
+`~/.config/jira-tui/config.yaml` are still picked up when the new file doesn't
+exist; move the file to the new location whenever convenient.
 
 ```yaml
 backend:
@@ -174,6 +193,7 @@ keybindings:
   force_refresh: r     # refresh the current tab
   help: "?"            # toggle the help overlay
   sort: s              # open the sort picker (list view)
+  copy: Y              # copy fields / URL to the clipboard
 ```
 
 ### Custom fields in the sidebar
@@ -184,7 +204,7 @@ The sidebar accepts any Jira field name — built-ins like `assignee`, `reporter
 `fields` command to discover the IDs of custom fields:
 
 ```sh
-jira-tui fields PROJ-123
+jira-tabbed-tui fields PROJ-123
 ```
 
 This prints a field-name-to-ID mapping for the given issue (no TUI), which you
@@ -192,7 +212,7 @@ can paste straight into your `list.columns` or `detail.sidebar_fields`.
 
 ## Usage
 
-Launch with `jira-tui` (or `jira-tabbed-tui`, depending on how you installed it).
+Launch with `jira-tabbed-tui`.
 Press `?` at any time for the context-sensitive keybindings overlay.
 
 ### Navigation
@@ -219,6 +239,7 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | `o` | Open in browser (without entering detail)   |
 | `m` | Change status                               |
 | `a` | Assign issue                                |
+| `Y` | Copy column values / issue URL              |
 | `s` | Sort the list                               |
 
 ### Detail view
@@ -226,7 +247,7 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | Key              | Action                                                    |
 | ---------------- | -------------------------------------------------------- |
 | `Esc`            | Back to list (clears navigation history)                 |
-| `⌫` / `Ctrl+o`   | Navigate back in history                                 |
+| `⌫` / `Ctrl+o`   | Navigate back in history (returns to the tab and link you left) |
 | `Ctrl+i`         | Navigate forward in history                              |
 | `←` / `→`        | Switch body tab (Description / Comments / Links)         |
 | `Enter`          | Open the linked issue (on the Links tab)                 |
@@ -235,11 +256,51 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 | `a`              | Assign issue (the highlighted linked issue on the Links tab)     |
 | `l`              | Add labels                                               |
 | `c`              | Add a comment                                            |
+| `Y`              | Copy issue fields / URL                                  |
 | `F`              | List all fields for the issue                            |
 | `Ctrl+e`         | Edit the highlighted field (in the Fields overlay)       |
 
 *(Action keys reflect the defaults; they follow whatever you set under
 `keybindings` in your config.)*
+
+### The Links tab
+
+Links are grouped and sorted:
+
+- **Jira issues** — subtasks, child issues and issue links, sorted by key
+  (`PROJ-9` before `PROJ-10`), with the relationship, the issue **type** and its
+  status.
+- **Pull requests** — GitHub pull requests and GitLab merge requests, with
+  their state: `open`, `draft`, `merged` or `closed`
+  (see [Pull request status](#pull-request-status-optional)).
+- **Web links** — any other remote link, sorted by title.
+
+`Enter` opens a Jira link in place (or a web link in the browser). Each issue
+you open this way is added to a history: `⌫`/`Ctrl+o` goes back and `Ctrl+i`
+forward, returning to the same tab and highlighted link. Once you are more than
+one issue deep, a breadcrumb above the header shows the trail and your depth,
+e.g. `depth 2/3  PROJ-1 › PROJ-7 › PROJ-9`, with the current issue highlighted
+and the ones you can go forward to dimmed.
+
+### Copying to the clipboard
+
+`Y` opens a picker of what can be copied from the current view:
+
+- **List view** — one entry per displayed column, in column order, plus the
+  issue's full URL.
+- **Detail view** — the issue's fields (key, summary, type, status, priority,
+  assignee, dates, your sidebar fields, description), plus the full URL. On
+  the Links tab the highlighted link's key/URL are offered too.
+
+In the picker, `1`–`9` copy that entry right away and `u` copies the URL.
+`Space` marks several entries (`a` marks all) and `Enter` copies them joined
+by a space, newline or tab (cycle with `Tab`); with nothing marked `Enter`
+copies the highlighted entry.
+
+The clipboard is written with `xclip`/`xsel`/`wl-copy` (Linux) or `pbcopy`
+(macOS); when none is available (e.g. over SSH) the OSC 52 terminal escape
+sequence is used instead. The URL needs a Jira server, taken from
+`backend.url` or jira-cli's config.
 
 ## How it works
 

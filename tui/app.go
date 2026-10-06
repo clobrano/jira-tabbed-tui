@@ -40,6 +40,7 @@ const (
 	overlayAssign        overlayMode = iota
 	overlayOptionPicker  overlayMode = iota
 	overlayFieldText     overlayMode = iota
+	overlayCopy          overlayMode = iota
 )
 
 // tabState holds per-tab runtime state.
@@ -50,6 +51,12 @@ type tabState struct {
 	// Search tab only
 	search   SearchInput
 	isSearch bool
+}
+
+// pendingViewState is a history entry's saved view, applied when its issue loads.
+type pendingViewState struct {
+	key  string
+	view DetailViewState
 }
 
 // FieldsOverlayMsg is sent to open the field-discovery overlay.
@@ -80,6 +87,7 @@ type App struct {
 	assign       actions.AssignModel
 	optionPicker actions.OptionPickerModel
 	fieldTextM   actions.FieldTextModel
+	copyM        actions.CopyModel
 	addTabM      actions.AddTabModel
 	editJQLM     actions.EditJQLModel
 	deleteTabIdx int // tab index pending confirmation
@@ -89,6 +97,8 @@ type App struct {
 	sortCursor    int             // cursor in the sort picker overlay
 	detailHistory []string        // issue keys navigated in the current detail session
 	detailHistIdx int             // current position in detailHistory (-1 = empty)
+	detailHistView []DetailViewState // body tab/link cursor last seen at each history entry
+	pendingView   *pendingViewState  // view to restore once a back/forward fetch lands
 	fields        []model.Field
 	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
 	fieldOriginal map[string]bool // snapshot when overlay opened
@@ -209,7 +219,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
 		} else {
-			a.statusLine = a.statusLine.SetMessage("", false)
+			a.statusLine = a.statusLine.ClearError()
 		}
 		return a, nil
 
@@ -221,7 +231,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.detail = a.detail.SetIssue(msg.Issue)
-		a.statusLine = a.statusLine.SetMessage("", false)
+		if p := a.pendingView; p != nil && p.key == msg.Issue.Key {
+			a.detail = a.detail.RestoreViewState(p.view)
+			a.pendingView = nil
+		}
+		a.statusLine = a.statusLine.ClearError()
 		// Fetch children and web/remote links in parallel.
 		return a, tea.Batch(
 			backend.FetchChildrenCmd(a.runner, msg.Issue.Key),
@@ -231,16 +245,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── children fetched ─────────────────────────────────────────────────────
 	case backend.ChildrenFetchedMsg:
 		if msg.Err == nil && len(msg.Children) > 0 && a.detail.IssueKey() == msg.ParentKey {
-			links := make([]model.IssueLink, len(msg.Children))
-			for i, ch := range msg.Children {
-				links[i] = model.IssueLink{
-					Type:    "child issue",
-					Key:     ch.Key,
-					Summary: ch.Summary,
-					Status:  ch.Status,
+			// Sub-tasks come back both in the issue's own subtasks list and
+			// from the parent query; list each issue only once.
+			listed := map[string]bool{}
+			for _, l := range a.detail.Issue().Links {
+				if l.URL == "" {
+					listed[l.Key] = true
 				}
 			}
-			a.detail = a.detail.AppendLinks(links)
+			var links []model.IssueLink
+			for _, ch := range msg.Children {
+				if listed[ch.Key] {
+					continue
+				}
+				links = append(links, model.IssueLink{
+					Type:      "child issue",
+					Key:       ch.Key,
+					Summary:   ch.Summary,
+					Status:    ch.Status,
+					IssueType: ch.Type,
+				})
+			}
+			if len(links) > 0 {
+				a.detail = a.detail.AppendLinks(links)
+			}
 		}
 		return a, nil
 
@@ -248,6 +276,22 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case backend.RemoteLinksFetchedMsg:
 		if msg.Err == nil && len(msg.Links) > 0 && a.detail.IssueKey() == msg.IssueKey {
 			a.detail = a.detail.AppendLinks(msg.Links)
+			var prs []string
+			for _, l := range msg.Links {
+				if backend.IsPullRequestURL(l.URL) {
+					prs = append(prs, l.URL)
+				}
+			}
+			if len(prs) > 0 {
+				return a, backend.FetchPullRequestStatesCmd(msg.IssueKey, prs)
+			}
+		}
+		return a, nil
+
+	// ── pull request states fetched ──────────────────────────────────────────
+	case backend.PullRequestStatesFetchedMsg:
+		if a.detail.IssueKey() == msg.IssueKey {
+			a.detail = a.detail.SetPullRequestStates(msg.States)
 		}
 		return a, nil
 
@@ -428,6 +472,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		tabName := a.currentTabName()
 		return a, backend.AddCommentCmd(a.runner, msg.IssueKey, msg.Body, tabName)
 
+	case actions.CopyConfirmedMsg:
+		a.overlay = overlayNone
+		if msg.Text == "" {
+			a.statusLine = a.statusLine.SetMessage("nothing to copy: "+strings.Join(msg.Labels, ", ")+" is empty", true)
+			return a, nil
+		}
+		return a, copyToClipboardCmd(msg.Text, strings.Join(msg.Labels, ", "))
+
+	case actions.CopyCancelledMsg:
+		a.overlay = overlayNone
+		return a, nil
+
+	case clipboardDoneMsg:
+		m := "copied " + msg.what
+		if msg.osc {
+			m += " (via terminal OSC 52)"
+		}
+		a.statusLine = a.statusLine.SetMessage(m, false)
+		return a, nil
+
 	case actions.CommentCancelledMsg:
 		a.overlay = overlayNone
 		return a, nil
@@ -496,7 +560,9 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case a.view == viewDetail:
 			a.view = viewList
 			a.detailHistory = nil
+			a.detailHistView = nil
 			a.detailHistIdx = -1
+			a.pendingView = nil
 			return a, nil
 		case a.view == viewList && a.activeTab < len(a.tabs):
 			tab := &a.tabs[a.activeTab]
@@ -650,6 +716,14 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 
+	case a.cfg.Keybindings.Copy:
+		if iss, ok := tab.list.SelectedIssue(); ok {
+			items := listCopyItems(tab.list.Columns(), iss, a.cfg.Backend.URL)
+			a.copyM = actions.NewCopyModel("Copy · "+iss.Key, items).SetSize(a.width, a.height)
+			a.overlay = overlayCopy
+			return a, nil
+		}
+
 	case a.cfg.Keybindings.Sort:
 		sf := a.sortableFields()
 		a.sortCursor = 0
@@ -678,18 +752,12 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "backspace", "ctrl+o":
 		if a.detailHistIdx > 0 {
-			a.detailHistIdx--
-			key := a.detailHistory[a.detailHistIdx]
-			a.detail = a.detail.SetLoading(true)
-			return a, a.cache.FetchDetailCmd(a.runner, key)
+			return a.moveHistory(-1)
 		}
 
 	case "ctrl+i", "tab":
 		if a.detailHistIdx < len(a.detailHistory)-1 {
-			a.detailHistIdx++
-			key := a.detailHistory[a.detailHistIdx]
-			a.detail = a.detail.SetLoading(true)
-			return a, a.cache.FetchDetailCmd(a.runner, key)
+			return a.moveHistory(1)
 		}
 
 	case "left":
@@ -730,6 +798,19 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case a.cfg.Keybindings.OpenBrowser:
 		return a, a.openBrowserCmd(a.detail.IssueKey())
 
+	case a.cfg.Keybindings.Copy:
+		if a.detail.IssueKey() == "" {
+			return a, nil
+		}
+		var link *model.IssueLink
+		if l, ok := a.detail.SelectedLink(); ok {
+			link = &l
+		}
+		items := detailCopyItems(a.detail.Issue(), a.cfg.Detail.SidebarFields, link, a.cfg.Backend.URL)
+		a.copyM = actions.NewCopyModel("Copy · "+a.detail.IssueKey(), items).SetSize(a.width, a.height)
+		a.overlay = overlayCopy
+		return a, nil
+
 	case a.cfg.Keybindings.FieldDiscover:
 		key := a.detail.IssueKey()
 		return a, func() tea.Msg {
@@ -764,6 +845,11 @@ func (a App) forwardToOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlayOptionPicker:
 		var cmd tea.Cmd
 		a.optionPicker, cmd = a.optionPicker.Update(msg)
+		return a, cmd
+
+	case overlayCopy:
+		var cmd tea.Cmd
+		a.copyM, cmd = a.copyM.Update(msg)
 		return a, cmd
 
 	case overlayFieldText:
@@ -923,6 +1009,8 @@ func (a App) View() string {
 		return a.assign.View()
 	case overlayOptionPicker:
 		return a.optionPicker.View()
+	case overlayCopy:
+		return a.copyM.View()
 	case overlayFieldText:
 		return a.fieldTextM.View()
 	case overlayLabels:
@@ -991,8 +1079,8 @@ func (a App) listHint() string {
 		if tab.search.IsFocused() {
 			return "Enter run JQL · Tab/←→ switch tabs · ? help · q quit"
 		}
-		return fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s sort · Q edit JQL · Tab/←→ tabs · ? help · q quit",
-			a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Sort)
+		return fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s copy · %s sort · Q edit JQL · Tab/←→ tabs · ? help · q quit",
+			a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Copy, a.cfg.Keybindings.Sort)
 	}
 	if tab.list.IsFilterActive() {
 		return "type to filter · Enter confirm · Esc clear"
@@ -1000,8 +1088,8 @@ func (a App) listHint() string {
 	if tab.list.IsFilterApplied() {
 		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
 	}
-	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
-		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Sort)
+	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s copy · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
+		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Copy, a.cfg.Keybindings.Sort)
 	if tab.list.SortField() != "" {
 		dir := "▲"
 		if !tab.list.SortAsc() {
@@ -1019,7 +1107,8 @@ func (a App) detailView() string {
 	if contentH < 1 {
 		contentH = 1
 	}
-	d := a.detail.SetSize(a.width, contentH, a.cfg.Detail.SidebarWidth)
+	d := a.detail.SetBreadcrumb(a.detailHistory, a.detailHistIdx).
+		SetSize(a.width, contentH, a.cfg.Detail.SidebarWidth)
 	return lipgloss.JoinVertical(lipgloss.Left,
 		tabBarView,
 		d.View(),
@@ -1034,8 +1123,8 @@ func (a App) detailHint() string {
 	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
 		target = " " + key
 	}
-	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status%s · %s assign%s · %s labels · %s comment · F fields · %s browser · Esc list · ? help",
-		kb.Transition, target, kb.Assign, target, kb.AddLabels, kb.AddComment, kb.OpenBrowser)
+	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status%s · %s assign%s · %s labels · %s comment · %s copy · F fields · %s browser · Esc list · ? help",
+		kb.Transition, target, kb.Assign, target, kb.AddLabels, kb.AddComment, kb.Copy, kb.OpenBrowser)
 	var nav []string
 	if a.detailHistIdx > 0 {
 		nav = append(nav, "⌫/ctrl+o back")
@@ -1329,10 +1418,35 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 
 // pushHistory records a new navigation target, truncating any forward history.
 func (a App) pushHistory(key string) App {
+	a = a.saveHistoryView()
 	// Keep everything up to (and including) current position, then append new key.
 	a.detailHistory = append(a.detailHistory[:a.detailHistIdx+1], key)
+	a.detailHistView = append(a.detailHistView[:a.detailHistIdx+1], DetailViewState{})
 	a.detailHistIdx = len(a.detailHistory) - 1
+	a.pendingView = nil
 	return a
+}
+
+// saveHistoryView remembers the current body tab/link cursor for the current
+// history entry, so coming back to it lands where the user left.
+func (a App) saveHistoryView() App {
+	if a.detailHistIdx >= 0 && a.detailHistIdx < len(a.detailHistView) {
+		views := append([]DetailViewState(nil), a.detailHistView...)
+		views[a.detailHistIdx] = a.detail.ViewState()
+		a.detailHistView = views
+	}
+	return a
+}
+
+// moveHistory navigates back (dir=-1) or forward (dir=1) in the detail
+// history and restores that entry's body tab and link cursor once it loads.
+func (a App) moveHistory(dir int) (App, tea.Cmd) {
+	a = a.saveHistoryView()
+	a.detailHistIdx += dir
+	key := a.detailHistory[a.detailHistIdx]
+	a.pendingView = &pendingViewState{key: key, view: a.detailHistView[a.detailHistIdx]}
+	a.detail = a.detail.SetLoading(true)
+	return a, a.cache.FetchDetailCmd(a.runner, key)
 }
 
 // detailActionTarget returns the issue key that move/assign should act on in
@@ -1604,6 +1718,8 @@ func (a App) resizeAll() App {
 		a.addTabM = a.addTabM.SetSize(a.width, a.height)
 	case overlayEditJQL:
 		a.editJQLM = a.editJQLM.SetSize(a.width, a.height)
+	case overlayCopy:
+		a.copyM = a.copyM.SetSize(a.width, a.height)
 	}
 	for i := range a.tabs {
 		if a.tabs[i].isSearch {

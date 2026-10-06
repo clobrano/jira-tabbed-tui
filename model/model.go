@@ -26,11 +26,12 @@ type IssueDetail struct {
 // IssueLink is a single Jira issue link (e.g. "blocks", "is blocked by", "relates to").
 // When URL is non-empty the link is a web/remote link; Key holds its display title.
 type IssueLink struct {
-	Type    string
-	Key     string
-	Summary string
-	Status  string
-	URL     string // non-empty for web/remote links; empty for Jira issue links
+	Type      string // relationship, e.g. "blocks", "subtask", "mentioned in"
+	Key       string
+	Summary   string
+	Status    string // Jira status, or the pull request state for PR web links
+	IssueType string // Jira issue type (Bug, Task, …); empty for web links
+	URL       string // non-empty for web/remote links; empty for Jira issue links
 }
 
 // Comment is a single Jira comment.

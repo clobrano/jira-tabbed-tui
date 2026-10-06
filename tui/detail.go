@@ -46,6 +46,13 @@ const (
 	bodyTabCount // sentinel — keep last
 )
 
+// DetailViewState is the part of the detail view restored when navigating
+// back/forward through history: the active body tab and the selected link.
+type DetailViewState struct {
+	bodyTab detailBodyTab
+	linkSel string // linkID of the selected link
+}
+
 // BackToListMsg is sent when the user presses Esc in the detail view.
 type BackToListMsg struct{}
 
@@ -56,6 +63,9 @@ type Detail struct {
 	err        error
 	bodyTab    detailBodyTab
 	linkCursor int
+	linkSel    string // linkID of the selected link; the cursor follows it as links are sorted/appended
+	crumbs     []string
+	crumbIdx   int
 	vp         viewport.Model
 	spinner    spinner.Model
 	sidebar    Sidebar
@@ -87,6 +97,9 @@ func (d Detail) SetSize(w, h int, sidebarPct int) Detail {
 	d.sidebar = d.sidebar.SetWidth(sidebarW)
 	mainW := w - sidebarW - 1
 	vpH := h - 4 // header + body-tab bar
+	if d.breadcrumb(mainW) != "" {
+		vpH--
+	}
 	if vpH < 3 {
 		vpH = 3
 	}
@@ -105,17 +118,99 @@ func (d Detail) SetIssue(issue model.IssueDetail) Detail {
 	// Reloading the same issue (e.g. after acting on one of its links) keeps
 	// the current body tab, link cursor and scroll position.
 	refresh := issue.Key != "" && issue.Key == d.issue.Key
+	// Copy before sorting: the slice is shared with the cache.
+	issue.Links = append([]model.IssueLink(nil), issue.Links...)
 	d.issue = issue
 	d.loading = false
 	d.err = nil
-	if refresh {
-		d.vp.SetContent(d.bodyContent(d.vp.Width))
-		return d
+	if !refresh {
+		d.bodyTab = bodyTabDescription
+		d.linkSel = ""
+		d.linkCursor = 0
 	}
-	d.bodyTab = bodyTabDescription
-	d.linkCursor = 0
+	d.relink()
+	d.vp.SetContent(d.bodyContent(d.vp.Width))
+	if !refresh {
+		d.vp.GotoTop()
+	}
+	return d
+}
+
+// relink sorts the links and points the cursor back at the selected link.
+func (d *Detail) relink() {
+	sortLinks(d.issue.Links)
+	for i, l := range d.issue.Links {
+		if d.linkSel != "" && linkID(l) == d.linkSel {
+			d.linkCursor = i
+			return
+		}
+	}
+	if d.linkCursor >= len(d.issue.Links) {
+		d.linkCursor = len(d.issue.Links) - 1
+	}
+	if d.linkCursor < 0 {
+		d.linkCursor = 0
+	}
+}
+
+// moveLinkCursor moves the selection by delta and remembers the selected link.
+func (d *Detail) moveLinkCursor(delta int) {
+	n := d.linkCursor + delta
+	if n < 0 || n >= len(d.issue.Links) {
+		return
+	}
+	d.linkCursor = n
+	d.linkSel = linkID(d.issue.Links[n])
+	d.vp.SetContent(d.bodyContent(d.vp.Width))
+	d.scrollLinkIntoView()
+}
+
+// SetBreadcrumb sets the detail history shown above the header when more
+// than one issue has been visited.
+func (d Detail) SetBreadcrumb(keys []string, idx int) Detail {
+	d.crumbs = keys
+	d.crumbIdx = idx
+	return d
+}
+
+func (d Detail) breadcrumb(width int) string {
+	return renderBreadcrumb(d.crumbs, d.crumbIdx, width)
+}
+
+// SetPullRequestStates fills in the status of PR web links, keyed by URL.
+func (d Detail) SetPullRequestStates(states map[string]string) Detail {
+	links := append([]model.IssueLink(nil), d.issue.Links...)
+	for i, l := range links {
+		if s, ok := states[l.URL]; ok && l.URL != "" {
+			links[i].Status = s
+		}
+	}
+	d.issue.Links = links
+	d.vp.SetContent(d.bodyContent(d.vp.Width))
+	return d
+}
+
+// ViewState returns the current body tab and link cursor.
+func (d Detail) ViewState() DetailViewState {
+	sel := d.linkSel
+	if sel == "" && d.linkCursor < len(d.issue.Links) {
+		sel = linkID(d.issue.Links[d.linkCursor])
+	}
+	return DetailViewState{bodyTab: d.bodyTab, linkSel: sel}
+}
+
+// RestoreViewState re-applies a state saved with ViewState. The selected link
+// may not be loaded yet (children and remote links arrive asynchronously);
+// the cursor moves to it once it does.
+func (d Detail) RestoreViewState(s DetailViewState) Detail {
+	d.bodyTab = s.bodyTab
+	d.linkSel = s.linkSel
+	d.relink()
 	d.vp.SetContent(d.bodyContent(d.vp.Width))
 	d.vp.GotoTop()
+	if d.bodyTab == bodyTabLinks {
+		d.scrollLinkIntoView()
+	}
 	return d
 }
 
@@ -143,18 +238,14 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 		switch key.String() {
 		case "j", "down":
 			if d.bodyTab == bodyTabLinks {
-				if d.linkCursor < len(d.issue.Links)-1 {
-					d.linkCursor++
-				}
+				d.moveLinkCursor(1)
 			} else {
 				d.vp.LineDown(1)
 			}
 			return d, nil
 		case "k", "up":
 			if d.bodyTab == bodyTabLinks {
-				if d.linkCursor > 0 {
-					d.linkCursor--
-				}
+				d.moveLinkCursor(-1)
 			} else {
 				d.vp.LineUp(1)
 			}
@@ -180,13 +271,11 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 }
 
 // scrollLinkIntoView adjusts the viewport YOffset so the cursor row is visible.
-// Header is 2 lines (header row + separator), so cursor row is at line linkCursor+2.
-// Must only be called when vp.Height > 0 (i.e. from SetSize, not from Update).
 func (d *Detail) scrollLinkIntoView() {
 	if d.vp.Height <= 0 {
 		return
 	}
-	line := d.linkCursor + 2
+	line := linkRowLine(d.issue.Links, d.linkCursor)
 	if line < d.vp.YOffset {
 		d.vp.YOffset = line
 	} else if line >= d.vp.YOffset+d.vp.Height {
@@ -206,9 +295,13 @@ func (d Detail) Init() tea.Cmd {
 
 func (d Detail) IssueKey() string { return d.issue.Key }
 
+// Issue returns the displayed issue.
+func (d Detail) Issue() model.IssueDetail { return d.issue }
+
 // AppendLinks adds links to the issue (used for async child-issue fetch).
 func (d Detail) AppendLinks(links []model.IssueLink) Detail {
-	d.issue.Links = append(d.issue.Links, links...)
+	d.issue.Links = append(append([]model.IssueLink(nil), d.issue.Links...), links...)
+	d.relink()
 	d.vp.SetContent(d.bodyContent(d.vp.Width))
 	return d
 }
@@ -234,7 +327,7 @@ func (d Detail) bodyContent(width int) string {
 	case bodyTabComments:
 		return d.renderComments(width)
 	case bodyTabLinks:
-		return d.renderLinks(width)
+		return renderLinkTable(d.issue.Links, d.linkCursor, width)
 	}
 	return ""
 }
@@ -258,78 +351,6 @@ func (d Detail) renderComments(width int) string {
 		sb.WriteString(bodyStyle.Render(c.Body))
 		sb.WriteString("\n\n")
 	}
-	return sb.String()
-}
-
-func (d Detail) renderLinks(width int) string {
-	if len(d.issue.Links) == 0 {
-		return statusIdleStyle.Padding(1, 1).Render("No linked issues.")
-	}
-	if width < 10 {
-		width = 10
-	}
-
-	const typeW, keyW, statusW = 20, 12, 14
-	summaryW := width - typeW - keyW - statusW - 8
-	if summaryW < 8 {
-		summaryW = 8
-	}
-
-	typeStyle := lipgloss.NewStyle().Width(typeW).Foreground(lipgloss.Color("#888888"))
-	keyStyle := lipgloss.NewStyle().Width(keyW).Foreground(lipgloss.Color("#5555ff")).Bold(true)
-	webKeyStyle := lipgloss.NewStyle().Width(keyW).Foreground(lipgloss.Color("#5588ff")).Underline(true)
-	summaryStyle := lipgloss.NewStyle().Width(summaryW).Foreground(lipgloss.Color("#dddddd"))
-	urlStyle := lipgloss.NewStyle().Width(summaryW).Foreground(lipgloss.Color("#5588ff")).Faint(true)
-	statusStyle := lipgloss.NewStyle().Width(statusW).Foreground(lipgloss.Color("#aaaaaa"))
-	cursorStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#222255")).
-		Foreground(lipgloss.Color("#ffffff")).
-		Bold(true)
-	hdrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
-
-	var sb strings.Builder
-	hdr := fmt.Sprintf("  %-*s  %-*s  %-*s  %s", typeW, "TYPE", keyW, "KEY / TITLE", summaryW, "SUMMARY / URL", "STATUS")
-	sb.WriteString(hdrStyle.Render(hdr) + "\n")
-	sepW := width - 2
-	if sepW < 0 {
-		sepW = 0
-	}
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#333333")).
-		Render(strings.Repeat("─", sepW)) + "\n")
-
-	for i, link := range d.issue.Links {
-		typ := link.Type
-		if len(typ) > typeW {
-			typ = typ[:typeW-1] + "…"
-		}
-		key := link.Key
-		if len(key) > keyW {
-			key = key[:keyW-1] + "…"
-		}
-		sum := link.Summary
-		if len(sum) > summaryW {
-			sum = sum[:summaryW-1] + "…"
-		}
-		status := link.Status
-		if len(status) > statusW {
-			status = status[:statusW-1] + "…"
-		}
-
-		if i == d.linkCursor {
-			line := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s", typeW, typ, keyW, key, summaryW, sum, statusW, status)
-			sb.WriteString(cursorStyle.Width(width - 2).Render(line) + "\n")
-		} else if link.URL != "" {
-			// Web link: title underlined, URL in faint blue
-			row := "  " + typeStyle.Render(typ) + "  " + webKeyStyle.Render(key) + "  " +
-				urlStyle.Render(sum) + "  " + statusStyle.Render(status)
-			sb.WriteString(row + "\n")
-		} else {
-			row := "  " + typeStyle.Render(typ) + "  " + keyStyle.Render(key) + "  " +
-				summaryStyle.Render(sum) + "  " + statusStyle.Render(status)
-			sb.WriteString(row + "\n")
-		}
-	}
-
 	return sb.String()
 }
 
@@ -371,5 +392,8 @@ func (d Detail) View() string {
 
 	content := lipgloss.JoinHorizontal(lipgloss.Top, mainPane, sidePane)
 
+	if crumb := d.breadcrumb(mainW); crumb != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, crumb, header, bodyTabBar, content)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, header, bodyTabBar, content)
 }

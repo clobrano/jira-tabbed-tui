@@ -102,6 +102,9 @@ type rawLinkedIssue struct {
 		Status  struct {
 			Name string `json:"name"`
 		} `json:"status"`
+		IssueType struct {
+			Name string `json:"name"`
+		} `json:"issuetype"`
 	} `json:"fields"`
 }
 
@@ -241,10 +244,11 @@ func parseIssueDetail(data []byte) (model.IssueDetail, error) {
 
 	for _, sub := range f.Subtasks {
 		detail.Links = append(detail.Links, model.IssueLink{
-			Type:    "subtask",
-			Key:     sub.Key,
-			Summary: sub.Fields.Summary,
-			Status:  sub.Fields.Status.Name,
+			Type:      "subtask",
+			Key:       sub.Key,
+			Summary:   sub.Fields.Summary,
+			Status:    sub.Fields.Status.Name,
+			IssueType: sub.Fields.IssueType.Name,
 		})
 	}
 
@@ -260,10 +264,11 @@ func parseIssueDetail(data []byte) (model.IssueDetail, error) {
 		}
 		if linked != nil {
 			detail.Links = append(detail.Links, model.IssueLink{
-				Type:    linkType,
-				Key:     linked.Key,
-				Summary: linked.Fields.Summary,
-				Status:  linked.Fields.Status.Name,
+				Type:      linkType,
+				Key:       linked.Key,
+				Summary:   linked.Fields.Summary,
+				Status:    linked.Fields.Status.Name,
+				IssueType: linked.Fields.IssueType.Name,
 			})
 		}
 	}

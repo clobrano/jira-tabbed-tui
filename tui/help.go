@@ -85,7 +85,7 @@ func (h HelpOverlay) View() string {
 	if h.inDetail {
 		detail := []binding{
 			{"Esc", "Back to list (clears history)"},
-			{"⌫  /  ctrl+o", "Navigate back in history"},
+			{"⌫  /  ctrl+o", "Navigate back (to the tab and link you left)"},
 			{"ctrl+i", "Navigate forward in history"},
 			{"← / →", "Switch body tab (Description / Comments / Links)"},
 			{"Enter", "Open linked issue (on Links tab)"},
@@ -94,6 +94,7 @@ func (h HelpOverlay) View() string {
 			{h.kb.Assign, "Assign issue (selected link on Links tab)"},
 			{h.kb.AddLabels, "Add labels"},
 			{h.kb.AddComment, "Add comment"},
+			{h.kb.Copy, "Copy fields / URL to clipboard"},
 			{h.kb.FieldDiscover, "List all fields"},
 		}
 		sb.WriteString(h.section("Detail View", detail))
@@ -103,6 +104,7 @@ func (h HelpOverlay) View() string {
 			{h.kb.OpenBrowser, "Open in browser (without entering detail)"},
 			{h.kb.Transition, "Change status"},
 			{h.kb.Assign, "Assign issue"},
+			{h.kb.Copy, "Copy column values / URL to clipboard"},
 			{h.kb.Sort, "Sort list"},
 		}
 		sb.WriteString(h.section("List View", listExtra))

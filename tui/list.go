@@ -360,17 +360,22 @@ func issueKeyLess(a, b string) bool {
 	return an < bn
 }
 
+// Columns returns the columns the list displays.
+func (l IssueList) Columns() []config.ListColumn {
+	if len(l.columns) == 0 {
+		return []config.ListColumn{
+			{Field: "key"}, {Field: "type"}, {Field: "summary"}, {Field: "status"},
+		}
+	}
+	return l.columns
+}
+
 func (l IssueList) buildTable() table.Model {
 	if l.width == 0 {
 		return table.Model{}
 	}
 
-	columns := l.columns
-	if len(columns) == 0 {
-		columns = []config.ListColumn{
-			{Field: "key"}, {Field: "type"}, {Field: "summary"}, {Field: "status"},
-		}
-	}
+	columns := l.Columns()
 
 	// Find the flexible column index (effective width == 0).
 	flexIdx := -1
