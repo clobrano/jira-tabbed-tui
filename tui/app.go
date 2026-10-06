@@ -1037,7 +1037,7 @@ func (a App) View() string {
 func (a App) listView() string {
 	tab := a.tabs[a.activeTab]
 	tabBarView := a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
-	statusView := a.statusLine.SetHint(a.listHint()).SetWidth(a.width).View()
+	statusView := a.statusLine.SetHints(a.listHints()).SetWidth(a.width).View()
 
 	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView) - 1
 	if contentH < 1 {
@@ -1070,39 +1070,74 @@ func (a App) listView() string {
 	)
 }
 
-func (a App) listHint() string {
+// listHints are the footer hints for the list view. Each says what its key
+// does; drop orders which give way first on narrow screens ("? all keys"
+// always stays).
+func (a App) listHints() []keyHint {
 	if a.activeTab >= len(a.tabs) {
-		return ""
+		return nil
 	}
+	kb := a.cfg.Keybindings
 	tab := a.tabs[a.activeTab]
-	if tab.isSearch {
-		if tab.search.IsFocused() {
-			return "Enter run JQL · Tab/←→ switch tabs · ? help · q quit"
+	if tab.isSearch && tab.search.IsFocused() {
+		return []keyHint{
+			{"enter", "run JQL", 0},
+			{"tab", "next tab", 2},
+			{"ctrl+c", "quit", 1},
 		}
-		return fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s copy · %s sort · Q edit JQL · Tab/←→ tabs · ? help · q quit",
-			a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Copy, a.cfg.Keybindings.Sort)
 	}
 	if tab.list.IsFilterActive() {
-		return "type to filter · Enter confirm · Esc clear"
+		return []keyHint{
+			{"", "type to filter", 2},
+			{"enter", "keep filter", 0},
+			{"esc", "clear filter", 0},
+		}
 	}
-	if tab.list.IsFilterApplied() {
-		return "j/k navigate · Enter open · / re-edit · Esc clear filter · r refresh · ? help · q quit"
-	}
-	hint := fmt.Sprintf("j/k navigate · Enter open · %s browser · %s move · %s assign · %s copy · / filter · %s sort · Tab/←→ tabs · Q JQL · r refresh · ? help · q quit",
-		a.cfg.Keybindings.OpenBrowser, a.cfg.Keybindings.Transition, a.cfg.Keybindings.Assign, a.cfg.Keybindings.Copy, a.cfg.Keybindings.Sort)
+
+	var hints []keyHint
 	if tab.list.SortField() != "" {
 		dir := "▲"
 		if !tab.list.SortAsc() {
 			dir = "▼"
 		}
-		hint = fmt.Sprintf("sorted by %s %s · %s", tab.list.SortField(), dir, hint)
+		hints = append(hints, keyHint{"", "sorted by " + tab.list.SortField() + " " + dir, 6})
 	}
-	return hint
+	hints = append(hints,
+		keyHint{"j/k", "next/prev issue", 7},
+		keyHint{"enter", "open issue", 1},
+		keyHint{"←/→", "prev/next tab", 3},
+		keyHint{kb.Transition, "change status", 2},
+		keyHint{kb.Assign, "assign issue", 4},
+		keyHint{kb.OpenBrowser, "open in browser", 5},
+		keyHint{kb.Copy, "copy fields/URL", 9},
+	)
+	switch {
+	case tab.isSearch:
+		hints = append(hints, keyHint{"Q", "edit JQL", 8})
+	case tab.list.IsFilterApplied():
+		hints = append(hints,
+			keyHint{"/", "edit filter", 8},
+			keyHint{"esc", "clear filter", 6},
+		)
+	default:
+		hints = append(hints, keyHint{"/", "filter rows", 8})
+	}
+	hints = append(hints, keyHint{kb.Sort, "sort list", 10})
+	if !tab.isSearch {
+		hints = append(hints,
+			keyHint{kb.ForceRefresh, "refresh tab", 11},
+			keyHint{"Q", "edit JQL", 12},
+		)
+	}
+	return append(hints,
+		keyHint{"q", "quit", 13},
+		keyHint{kb.Help, "all keys", 0},
+	)
 }
 
 func (a App) detailView() string {
 	tabBarView := a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
-	statusView := a.statusLine.SetHint(a.detailHint()).SetWidth(a.width).View()
+	statusView := a.statusLine.SetHints(a.detailHints()).SetWidth(a.width).View()
 	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView)
 	if contentH < 1 {
 		contentH = 1
@@ -1116,26 +1151,49 @@ func (a App) detailView() string {
 	)
 }
 
-func (a App) detailHint() string {
+// detailHints are the footer hints for the detail view (see listHints).
+func (a App) detailHints() []keyHint {
 	kb := a.cfg.Keybindings
-	// On a linked Jira issue, status/assign act on the link, so name it.
-	target := ""
-	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
-		target = " " + key
-	}
-	hint := fmt.Sprintf("j/k scroll · ctrl+d/u page · ←/→ tabs · Enter open link · %s status%s · %s assign%s · %s labels · %s comment · %s copy · F fields · %s browser · Esc list · ? help",
-		kb.Transition, target, kb.Assign, target, kb.AddLabels, kb.AddComment, kb.Copy, kb.OpenBrowser)
-	var nav []string
+	var hints []keyHint
 	if a.detailHistIdx > 0 {
-		nav = append(nav, "⌫/ctrl+o back")
+		hints = append(hints, keyHint{"⌫/ctrl+o", "go back", 2})
 	}
 	if a.detailHistIdx < len(a.detailHistory)-1 {
-		nav = append(nav, "ctrl+i fwd")
+		hints = append(hints, keyHint{"ctrl+i", "go forward", 3})
 	}
-	if len(nav) > 0 {
-		hint = strings.Join(nav, " · ") + " · " + hint
+
+	// On a linked Jira issue, status/assign act on the link, so name it.
+	status, assign := "change status", "assign issue"
+	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
+		status, assign = "change "+key+" status", "assign "+key
 	}
-	return hint
+	if link, ok := a.detail.SelectedLink(); ok {
+		open := "open " + link.Key
+		if link.URL != "" {
+			open = "open link in browser"
+		}
+		hints = append(hints,
+			keyHint{"j/k", "next/prev link", 7},
+			keyHint{"enter", open, 1},
+		)
+	} else {
+		hints = append(hints,
+			keyHint{"j/k", "scroll", 7},
+			keyHint{"ctrl+d/u", "page down/up", 12},
+		)
+	}
+	return append(hints,
+		keyHint{"←/→", "prev/next section", 4},
+		keyHint{kb.Transition, status, 1},
+		keyHint{kb.Assign, assign, 5},
+		keyHint{kb.AddComment, "add comment", 9},
+		keyHint{kb.AddLabels, "add labels", 10},
+		keyHint{kb.Copy, "copy fields/URL", 8},
+		keyHint{kb.OpenBrowser, "open in browser", 6},
+		keyHint{kb.FieldDiscover, "list fields", 13},
+		keyHint{"esc", "back to list", 11},
+		keyHint{kb.Help, "all keys", 0},
+	)
 }
 
 func (a App) filteredFields() []model.Field {
