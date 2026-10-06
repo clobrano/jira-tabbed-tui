@@ -39,9 +39,10 @@ any real one for the duration of the recording, starts the mock REST API on
 1. browses the board and switches tabs;
 2. copies an issue URL with the copy picker (`Y` then `u`);
 3. opens the issue and walks its body tabs to **Links**;
-4. moves through the links, opens a linked issue (`Enter`), goes back
-   (`Backspace`), forward (`Ctrl+i`) and back again — landing on the same
-   highlighted link each time;
+4. shows the grouped links (Jira issues with their type, pull requests with
+   their state, web links), then follows links three issues deep and steps back
+   (`Ctrl+o`) and forward (`Ctrl+i`) — the breadcrumb tracks the depth and the
+   same link is highlighted each time;
 5. changes the status of the highlighted linked issue right from the Links tab
    (`m`), without opening it;
 6. copies the issue's key and summary (`Y`, mark both, `Enter`);
@@ -55,7 +56,9 @@ Output is written to `demo/demo.gif`.
   understands only what the demo exercises (`me`, `issue list --raw`,
   `issue view --raw`, `issue move`). Do **not** add it to your real `PATH`.
 - `demo/mock-jira-api.py` serves the REST calls the TUI makes directly
-  (an issue's transitions and web links). `demo/config.yaml` points
+  (an issue's transitions and web links), plus GitHub's pull request API under
+  `/github` — the tape sets `GITHUB_API_URL` there so the PR links show their
+  state. `demo/config.yaml` points
   `backend.url` at it, which is why copied URLs in the GIF start with
   `http://localhost:8642`.
 - Status changes (`issue move`) are remembered in a temporary state file

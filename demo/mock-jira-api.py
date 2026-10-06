@@ -7,6 +7,9 @@ transitions (the status picker) and its remote/web links. This tiny server
 answers those calls with canned data so the demo GIF can be recorded with no
 live Jira instance. demo/config.yaml points backend.url at it.
 
+It also answers GitHub's pull request API under /github, so the PR links show
+their state; the tape sets GITHUB_API_URL to that prefix.
+
 Statuses changed with `jira issue move` (handled by demo/bin/jira) are read
 back from the same state file, so the status picker always marks the issue's
 current status.
@@ -36,16 +39,27 @@ DEFAULT_STATUS = {
 }
 WORKFLOW = ["To Do", "In Progress", "In Review", "Done"]
 
+
+def _remote(relationship, title, url):
+    return {"relationship": relationship, "object": {"url": url, "title": title}}
+
+
 REMOTE_LINKS = {
     "PLATFORM-142": [
-        {
-            "relationship": "mentioned in",
-            "object": {
-                "url": "https://status.example.com/incidents/safari-login-flicker",
-                "title": "Incident: Safari login flicker",
-            },
-        }
+        _remote("mentioned in", "Incident: Safari login flicker",
+                "https://status.example.com/incidents/safari-login-flicker"),
+        _remote("fixed by", "acme/web#482", "https://github.com/acme/web/pull/482"),
+        _remote("relates to", "acme/web#471", "https://github.com/acme/web/pull/471"),
+        _remote("relates to", "acme/web#465", "https://github.com/acme/web/pull/465"),
     ],
+}
+
+# GitHub pull request states, served under /github (the tape points
+# $GITHUB_API_URL there) so PR links show open / merged / closed.
+PULLS = {
+    "482": {"state": "open", "merged": False, "draft": False},
+    "471": {"state": "closed", "merged": True, "draft": False},
+    "465": {"state": "closed", "merged": False, "draft": False},
 }
 
 
@@ -64,6 +78,12 @@ def status_of(key):
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        pr = re.match(r"^/github/repos/[^/]+/[^/]+/pulls/(\d+)$", self.path)
+        if pr:
+            if pr.group(1) not in PULLS:
+                self.send_error(404)
+                return
+            return self.reply(PULLS[pr.group(1)])
         m = re.match(r"^/rest/api/\d+/issue/([^/]+)/(transitions|remotelink)", self.path)
         if not m:
             return self.reply([])

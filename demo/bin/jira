@@ -52,11 +52,17 @@ if [[ "$args" == issue\ view* ]]; then
   # the Links tab shows a different issue.
   case "$key" in
     PLATFORM-151|PLATFORM-152|PLATFORM-98)
+      extra_link=""
       case "$key" in
         PLATFORM-151) sum="Add session-ready guard before first paint"; typ="Sub-task"; st="In Progress"; who="Dana Reyes"
           desc="Delay mounting the login form until the session cookie has been read back, so Safari stops rendering it twice." ;;
         PLATFORM-152) sum="Add Safari smoke test to CI"; typ="Sub-task"; st="To Do"; who="Sam Okafor"
-          desc="Run the OAuth login flow in Safari on every PR so the flicker cannot regress." ;;
+          desc="Run the OAuth login flow in Safari on every PR so the flicker cannot regress."
+          extra_link=',
+      {
+        "type": { "inward": "relates to", "outward": "relates to" },
+        "outwardIssue": { "key": "PLATFORM-98", "fields": { "summary": "Migrate auth to new session service", "issuetype": { "name": "Story" }, "status": { "name": "'"$(status_of PLATFORM-98 "Done")"'" } } }
+      }' ;;
         PLATFORM-98)  sum="Migrate auth to new session service"; typ="Story"; st="Done"; who="Priya Nair"
           desc="Move login and token refresh onto the new session service." ;;
       esac
@@ -78,8 +84,8 @@ if [[ "$args" == issue\ view* ]]; then
     "issuelinks": [
       {
         "type": { "inward": "is blocked by", "outward": "blocks" },
-        "outwardIssue": { "key": "PLATFORM-142", "fields": { "summary": "Login page flickers on Safari during OAuth redirect", "status": { "name": "$(status_of PLATFORM-142 "In Progress")" } } }
-      }
+        "outwardIssue": { "key": "PLATFORM-142", "fields": { "summary": "Login page flickers on Safari during OAuth redirect", "issuetype": { "name": "Bug" }, "status": { "name": "$(status_of PLATFORM-142 "In Progress")" } } }
+      }$extra_link
     ]
   }
 }
@@ -118,13 +124,13 @@ JSON
       ]
     },
     "subtasks": [
-      { "key": "PLATFORM-151", "fields": { "summary": "Add session-ready guard before first paint", "status": { "name": "$(status_of PLATFORM-151 "In Progress")" } } },
-      { "key": "PLATFORM-152", "fields": { "summary": "Add Safari smoke test to CI", "status": { "name": "$(status_of PLATFORM-152 "To Do")" } } }
+      { "key": "PLATFORM-151", "fields": { "summary": "Add session-ready guard before first paint", "issuetype": { "name": "Sub-task" }, "status": { "name": "$(status_of PLATFORM-151 "In Progress")" } } },
+      { "key": "PLATFORM-152", "fields": { "summary": "Add Safari smoke test to CI", "issuetype": { "name": "Sub-task" }, "status": { "name": "$(status_of PLATFORM-152 "To Do")" } } }
     ],
     "issuelinks": [
       {
         "type": { "inward": "is blocked by", "outward": "blocks" },
-        "outwardIssue": { "key": "PLATFORM-98", "fields": { "summary": "Migrate auth to new session service", "status": { "name": "$(status_of PLATFORM-98 "Done")" } } }
+        "outwardIssue": { "key": "PLATFORM-98", "fields": { "summary": "Migrate auth to new session service", "issuetype": { "name": "Story" }, "status": { "name": "$(status_of PLATFORM-98 "Done")" } } }
       }
     ]
   }

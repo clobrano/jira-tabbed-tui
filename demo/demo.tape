@@ -25,7 +25,7 @@ Set TypingSpeed 60ms
 Hide
 Type "export DEMO_BIN=$(mktemp -d) && go build -o $DEMO_BIN/jira-tabbed-tui ."
 Enter
-Type "export PATH=$DEMO_BIN:$PWD/demo/bin:$PATH JIRA_API_TOKEN=demo-token JIRA_DEMO_STATE=$(mktemp)"
+Type "export PATH=$DEMO_BIN:$PWD/demo/bin:$PATH JIRA_API_TOKEN=demo-token JIRA_DEMO_STATE=$(mktemp) GITHUB_API_URL=http://localhost:8642/github"
 Enter
 Type "timeout 600 python3 demo/mock-jira-api.py >/dev/null 2>&1 & MOCK_PID=$!"
 Enter
@@ -68,20 +68,29 @@ Sleep 1.5s
 Right
 Sleep 1.5s
 
-# --- Links tab: walk the links, open one, go back and forth ------------------
+# --- Links tab: grouped (Jira / PRs / web), PR states, issue types ----------
+Sleep 2.5s
 Down
-Sleep 800ms
+Sleep 700ms
 Down
-Sleep 800ms
-Up
 Sleep 1s
+
+# --- follow links 3 deep, then back and forth: the breadcrumb tracks depth ---
+Enter
+Sleep 1.5s
+Right
+Sleep 800ms
+Right
+Sleep 1.5s
 Enter
 Sleep 2s
-Backspace
-Sleep 2s
+Ctrl+O
+Sleep 1.8s
+Ctrl+O
+Sleep 1.8s
 Ctrl+I
-Sleep 2s
-Backspace
+Sleep 1.8s
+Ctrl+O
 Sleep 2s
 
 # --- change the status of the highlighted linked issue, without opening it ---
