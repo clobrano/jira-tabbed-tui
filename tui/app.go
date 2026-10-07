@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -48,6 +49,10 @@ type tabState struct {
 	name   string
 	jql    string
 	list   IssueList
+	// fetchedAt is when the shown issues came from Jira; refreshFailed marks
+	// a failed refresh that left older (or no) data on screen.
+	fetchedAt     time.Time
+	refreshFailed bool
 	// Search tab only
 	search   SearchInput
 	isSearch bool
@@ -108,6 +113,9 @@ type App struct {
 	width        int
 	height       int
 	globalSpinner spinner.Model
+	user          string           // signed-in Jira user, shown in the title bar
+	server        string           // Jira host, shown in the title bar
+	now           func() time.Time // clock, swappable in tests
 }
 
 // New creates the root App model.
@@ -177,7 +185,16 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 		fieldInput:    fi,
 		globalSpinner: gs,
 		detailHistIdx: -1,
+		server:        backend.ServerHost(cfg.Backend.URL),
+		now:           time.Now,
 	}
+}
+
+// WithUser sets the signed-in user shown in the title bar (the output of
+// `jira me`).
+func (a App) WithUser(user string) App {
+	a.user = strings.TrimSpace(user)
+	return a
 }
 
 // Init starts the spinner and triggers the initial fetch for the first non-search tab.
@@ -215,6 +232,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.TabIdx >= 0 && msg.TabIdx < len(a.tabs) {
 			tab := &a.tabs[msg.TabIdx]
 			tab.list = tab.list.SetIssues(msg.Issues, msg.Total, msg.Stale, msg.Err)
+			tab.refreshFailed = msg.Err != nil
+			if msg.Err == nil || msg.Stale {
+				tab.fetchedAt = msg.At
+			}
 		}
 		if msg.Err != nil {
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
@@ -1036,7 +1057,7 @@ func (a App) View() string {
 
 func (a App) listView() string {
 	tab := a.tabs[a.activeTab]
-	tabBarView := a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
+	tabBarView := a.titleBar() + "\n" + a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
 	statusView := a.statusLine.SetHints(a.listHints()).SetWidth(a.width).View()
 
 	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView) - 1
@@ -1136,7 +1157,7 @@ func (a App) listHints() []keyHint {
 }
 
 func (a App) detailView() string {
-	tabBarView := a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
+	tabBarView := a.titleBar() + "\n" + a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
 	statusView := a.statusLine.SetHints(a.detailHints()).SetWidth(a.width).View()
 	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView)
 	if contentH < 1 {

@@ -215,6 +215,14 @@ can paste straight into your `list.columns` or `detail.sidebar_fields`.
 Launch with `jira-tabbed-tui`.
 Press `?` at any time for the context-sensitive keybindings overlay.
 
+The **title bar** at the top shows the Jira server and the signed-in user, how
+many issues the current tab holds with a colour-coded count per status, and on
+the right how fresh the data is (`updated 2m ago`, or `refresh failed · data
+from 6m ago` when a refresh fails and older results are shown). On narrow
+terminals the less important parts give way first: the tagline, the user, the
+server, then the rarest statuses. The **footer** lists the keys you can use
+right now and what each one does.
+
 ### Navigation
 
 | Key           | Action                                        |
