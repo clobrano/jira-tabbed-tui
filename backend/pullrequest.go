@@ -150,6 +150,14 @@ func FetchPullRequestState(u string) (string, error) {
 	return state, nil
 }
 
+// ForgetPullRequestStates empties the PR state cache, so the next lookups
+// ask GitHub/GitLab again (used by an explicit refresh).
+func ForgetPullRequestStates() {
+	prCacheMu.Lock()
+	prCache = map[string]prCacheEntry{}
+	prCacheMu.Unlock()
+}
+
 // prState normalises GitHub ("open"/"closed" + merged) and GitLab
 // ("opened"/"merged"/"closed"/"locked") states.
 func prState(state string, merged, draft bool) string {

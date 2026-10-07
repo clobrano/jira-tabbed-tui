@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -118,5 +120,65 @@ func TestRefetchKeepsSuccessMessageButClearsErrors(t *testing.T) {
 	a = send(t, a, fetched("P-1"))
 	if a.statusLine.message != "" {
 		t.Errorf("stale error kept after refetch: %q", a.statusLine.message)
+	}
+}
+
+// fetchingRunner serves `issue view KEY --raw` with a status it can change.
+type fetchingRunner struct {
+	status string
+	err    error
+}
+
+func (r *fetchingRunner) Run(args ...string) ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if len(args) >= 3 && args[0] == "issue" && args[1] == "view" {
+		return []byte(`{"key":"` + args[2] + `","fields":{"summary":"s","status":{"name":"` + r.status + `"},
+			"issuelinks":[{"type":{"inward":"x","outward":"relates to"},"outwardIssue":{"key":"P-2","fields":{"summary":"l"}}}]}}`), nil
+	}
+	return []byte(`{"total":0,"issues":[]}`), nil
+}
+
+func TestRefreshInDetailViewReloadsIssueInPlace(t *testing.T) {
+	r := &fetchingRunner{status: "To Do"}
+	a := newTestApp(t)
+	a.runner = r
+	a.view = viewDetail
+	a = a.pushHistory("P-1")
+
+	// Load P-1 through the cache, then move to its Links tab.
+	a = send(t, a, a.cache.FetchDetailCmd(r, "P-1")(), keyMsg("right"), keyMsg("right"))
+	if a.detail.Issue().Status != "To Do" {
+		t.Fatalf("status = %q", a.detail.Issue().Status)
+	}
+
+	// The issue changes in Jira; r reloads it, bypassing the cache.
+	r.status = "Done"
+	m, cmd := a.Update(keyMsg("r"))
+	a = m.(App)
+	if cmd == nil {
+		t.Fatal("r in the detail view did nothing")
+	}
+	a = send(t, a, cmd())
+	if a.detail.Issue().Status != "Done" {
+		t.Errorf("after refresh status = %q, want Done", a.detail.Issue().Status)
+	}
+	if l, ok := a.detail.SelectedLink(); !ok || l.Key != "P-2" {
+		t.Errorf("refresh lost the Links tab selection: %+v %v", l, ok)
+	}
+	if a.statusLine.message != "refreshed P-1" || a.statusLine.isError {
+		t.Errorf("status line = %q (error=%v)", a.statusLine.message, a.statusLine.isError)
+	}
+
+	// A failed refresh keeps the issue on screen and reports the error.
+	r.err = errors.New("network down")
+	m, cmd = a.Update(keyMsg("r"))
+	a = send(t, m.(App), cmd())
+	if a.detail.IssueKey() != "P-1" || a.detail.Issue().Status != "Done" {
+		t.Errorf("failed refresh replaced the issue: %q %q", a.detail.IssueKey(), a.detail.Issue().Status)
+	}
+	if !a.statusLine.isError || !strings.Contains(a.statusLine.message, "refresh failed") {
+		t.Errorf("status line = %q (error=%v)", a.statusLine.message, a.statusLine.isError)
 	}
 }

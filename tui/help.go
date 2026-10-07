@@ -95,6 +95,7 @@ func (h HelpOverlay) View() string {
 			{h.kb.AddLabels, "Add labels"},
 			{h.kb.AddComment, "Add comment"},
 			{h.kb.Copy, "Copy fields / URL to clipboard"},
+			{h.kb.ForceRefresh, "Refresh this issue from Jira"},
 			{h.kb.FieldDiscover, "List all fields"},
 		}
 		sb.WriteString(h.section("Detail View", detail))
