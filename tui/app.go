@@ -104,6 +104,7 @@ type App struct {
 	detailHistIdx int             // current position in detailHistory (-1 = empty)
 	detailHistView []DetailViewState // body tab/link cursor last seen at each history entry
 	pendingView   *pendingViewState  // view to restore once a back/forward fetch lands
+	refreshingKey string             // issue being force-refreshed from the detail view
 	fields        []model.Field
 	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
 	fieldOriginal map[string]bool // snapshot when overlay opened
@@ -246,6 +247,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── detail fetched ───────────────────────────────────────────────────────
 	case backend.DetailFetchedMsg:
+		refreshing := a.refreshingKey
+		a.refreshingKey = ""
+		refreshed := refreshing != "" && refreshing == msg.Issue.Key
+		if msg.Err != nil && refreshing != "" && refreshing == a.detail.IssueKey() {
+			// A failed refresh keeps the issue already on screen.
+			a.statusLine = a.statusLine.SetMessage("refresh failed: "+MapCLIError(msg.Err.Error()), true)
+			return a, nil
+		}
 		if msg.Err != nil {
 			a.detail = a.detail.SetError(msg.Err)
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
@@ -257,6 +266,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.pendingView = nil
 		}
 		a.statusLine = a.statusLine.ClearError()
+		if refreshed {
+			a.statusLine = a.statusLine.SetMessage("refreshed "+msg.Issue.Key, false)
+		}
 		// Fetch children and web/remote links in parallel.
 		return a, tea.Batch(
 			backend.FetchChildrenCmd(a.runner, msg.Issue.Key),
@@ -819,6 +831,18 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case a.cfg.Keybindings.OpenBrowser:
 		return a, a.openBrowserCmd(a.detail.IssueKey())
 
+	case a.cfg.Keybindings.ForceRefresh:
+		// Reload the issue (and its children, links and PR states) from Jira,
+		// keeping the current body tab, link and scroll position.
+		key := a.detail.IssueKey()
+		if key == "" {
+			return a, nil
+		}
+		a.cache.Invalidate("", key)
+		backend.ForgetPullRequestStates()
+		a.refreshingKey = key
+		return a, a.cache.FetchDetailCmd(a.runner, key)
+
 	case a.cfg.Keybindings.Copy:
 		if a.detail.IssueKey() == "" {
 			return a, nil
@@ -1211,6 +1235,7 @@ func (a App) detailHints() []keyHint {
 		keyHint{kb.AddLabels, "add labels", 10},
 		keyHint{kb.Copy, "copy fields/URL", 8},
 		keyHint{kb.OpenBrowser, "open in browser", 6},
+		keyHint{kb.ForceRefresh, "refresh issue", 12},
 		keyHint{kb.FieldDiscover, "list fields", 13},
 		keyHint{"esc", "back to list", 11},
 		keyHint{kb.Help, "all keys", 0},

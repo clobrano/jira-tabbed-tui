@@ -265,6 +265,7 @@ right now and what each one does.
 | `l`              | Add labels                                               |
 | `c`              | Add a comment                                            |
 | `Y`              | Copy issue fields / URL                                  |
+| `r`              | Refresh the issue (and its links) from Jira               |
 | `F`              | List all fields for the issue                            |
 | `Ctrl+e`         | Edit the highlighted field (in the Fields overlay)       |
 
