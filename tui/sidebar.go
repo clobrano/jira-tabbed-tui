@@ -27,6 +27,7 @@ var (
 type Sidebar struct {
 	fields []config.SidebarField
 	width  int
+	height int // rows available; 0 = unlimited
 }
 
 func NewSidebar(fields []config.SidebarField) Sidebar {
@@ -38,41 +39,119 @@ func (s Sidebar) SetWidth(w int) Sidebar {
 	return s
 }
 
+// SetHeight limits the panel to h rows; fields that don't fit are summarised
+// as "… N more fields".
+func (s Sidebar) SetHeight(h int) Sidebar {
+	s.height = h
+	return s
+}
+
 func (s Sidebar) View(detail model.IssueDetail) string {
 	if s.width < 5 {
 		return ""
 	}
-	labelW := 12
-	valueW := s.width - labelW - 4 // borders + padding
-	if valueW < 5 {
-		valueW = 5
+	inner := s.width - 2 // sidebarStyle pads one column on each side
+	valueW := inner - 2  // values are indented by two spaces
+
+	type row struct {
+		text  string
+		field int // index of the field the row belongs to
 	}
-
-	var rows []string
-	rows = append(rows, sidebarLabelStyle.Width(s.width-2).Render("── Fields ──"))
-
-	for _, sf := range s.fields {
+	rows := []row{{sidebarLabelStyle.Render("── Fields ──"), -1}}
+	for i, sf := range s.fields {
 		label := sf.Label
 		if label == "" {
 			label = fieldDisplayLabel(sf.Field)
+		}
+		for _, l := range wrapText(label+":", inner) {
+			rows = append(rows, row{sidebarLabelStyle.Render(l), i})
 		}
 		value := fieldValue(detail, sf.Field)
 		if value == "" {
 			value = "—"
 		}
-		// Wrap long values.
-		if len(value) > valueW {
-			value = value[:valueW-1] + "…"
+		for _, l := range wrapValue(value, valueW) {
+			rows = append(rows, row{sidebarValueStyle.Render("  " + l), i})
 		}
-		row := fmt.Sprintf("%s\n%s",
-			sidebarLabelStyle.Width(s.width-2).Render(label+":"),
-			sidebarValueStyle.Width(s.width-2).Render("  "+value),
-		)
-		rows = append(rows, row)
 	}
 
-	content := strings.Join(rows, "\n")
-	return sidebarStyle.Width(s.width).Render(content)
+	// Too tall for the panel: stop at the last field that fits whole.
+	if s.height > 0 && len(rows) > s.height {
+		cut := s.height - 1
+		for cut > 1 && rows[cut-1].field == rows[cut].field {
+			cut--
+		}
+		hidden := len(s.fields) - rows[cut].field
+		rows = append(rows[:cut:cut], row{statusIdleStyle.Render(fmt.Sprintf("… %d more fields", hidden)), -1})
+	}
+
+	lines := make([]string, len(rows))
+	for i, r := range rows {
+		lines[i] = r.text
+	}
+	return sidebarStyle.Width(s.width).Render(strings.Join(lines, "\n"))
+}
+
+// wrapValue wraps a field value to width w. Comma-separated lists (labels,
+// components, versions, …) break between items, so an item is only split
+// when it is longer than a whole line.
+func wrapValue(value string, w int) []string {
+	if !strings.Contains(value, ", ") {
+		return wrapText(value, w)
+	}
+	items := strings.Split(value, ", ")
+	for i := range items[:len(items)-1] {
+		items[i] += ","
+	}
+	return packTokens(items, w)
+}
+
+// wrapText word-wraps s to width w, breaking words longer than a line.
+func wrapText(s string, w int) []string {
+	return packTokens(strings.Fields(s), w)
+}
+
+// packTokens fills lines of width w with space-separated tokens. A token
+// wider than w is word-wrapped on its own lines (or hard-broken if it is a
+// single long word).
+func packTokens(tokens []string, w int) []string {
+	if w < 1 {
+		w = 1
+	}
+	var lines []string
+	cur := ""
+	flush := func() {
+		if cur != "" {
+			lines = append(lines, cur)
+			cur = ""
+		}
+	}
+	for _, t := range tokens {
+		tw := lipgloss.Width(t)
+		switch {
+		case cur != "" && lipgloss.Width(cur)+1+tw <= w:
+			cur += " " + t
+		case tw <= w:
+			flush()
+			cur = t
+		case strings.Contains(t, " "):
+			flush()
+			lines = append(lines, packTokens(strings.Fields(t), w)...)
+		default:
+			flush()
+			r := []rune(t)
+			for len(r) > w {
+				lines = append(lines, string(r[:w]))
+				r = r[w:]
+			}
+			cur = string(r)
+		}
+	}
+	flush()
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return lines
 }
 
 func fieldDisplayLabel(id string) string {

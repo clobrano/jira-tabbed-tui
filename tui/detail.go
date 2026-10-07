@@ -106,6 +106,7 @@ func (d Detail) SetSize(w, h int, sidebarPct int) Detail {
 	// Resize in place — recreating would reset YOffset and lose scroll position.
 	d.vp.Width = mainW
 	d.vp.Height = vpH
+	d.sidebar = d.sidebar.SetHeight(vpH)
 	d.vp.SetContent(d.bodyContent(mainW))
 	// Keep the link cursor visible after every resize/render.
 	if d.bodyTab == bodyTabLinks {
