@@ -44,6 +44,17 @@ func resolveJiraServer(cfgURL string) (baseURL, email string) {
 	return baseURL, email
 }
 
+// ServerHost returns the Jira server's host name (e.g. "myorg.atlassian.net"),
+// or "" when no server is configured.
+func ServerHost(cfgURL string) string {
+	baseURL, _ := resolveJiraServer(cfgURL)
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
+
 // IssueURL returns the browser URL of an issue ("<server>/browse/<key>"),
 // or "" when no Jira server is configured.
 func IssueURL(cfgURL, key string) string {

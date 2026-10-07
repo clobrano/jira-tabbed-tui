@@ -38,13 +38,14 @@ var rootCmd = &cobra.Command{
 				"Set backend.cli in your config to the correct binary name.", cfg.Backend.CLI, err)
 		}
 
-		// Cheap auth check.
-		if _, err := runner.Run("me"); err != nil {
+		// Cheap auth check; its output (the signed-in user) goes in the title bar.
+		me, err := runner.Run("me")
+		if err != nil {
 			return fmt.Errorf("CLI auth check failed (%s me): %w\n"+
 				"Run `%s auth login` to authenticate.", cfg.Backend.CLI, err, cfg.Backend.CLI)
 		}
 
-		app := tui.New(cfg, configPath, runner)
+		app := tui.New(cfg, configPath, runner).WithUser(string(me))
 
 		p := tea.NewProgram(app,
 			tea.WithAltScreen(),

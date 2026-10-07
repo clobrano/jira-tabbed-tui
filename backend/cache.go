@@ -17,7 +17,8 @@ type ListFetchedMsg struct {
 	Issues []model.Issue
 	Total  int
 	Err    error
-	Stale  bool // true when returning stale cached data because the fetch failed
+	Stale  bool      // true when returning stale cached data because the fetch failed
+	At     time.Time // when the returned issues were fetched from Jira
 }
 
 // DetailFetchedMsg is sent when an issue detail fetch completes.
@@ -101,7 +102,7 @@ func (c *Cache) FetchListCmd(r Runner, tabIdx int, tabName, jql string) tea.Cmd 
 		c.mu.Unlock()
 
 		if cached && time.Since(entry.fetchedAt) < c.ttl {
-			return ListFetchedMsg{TabIdx: tabIdx, Issues: entry.issues, Total: entry.total}
+			return ListFetchedMsg{TabIdx: tabIdx, Issues: entry.issues, Total: entry.total, At: entry.fetchedAt}
 		}
 
 		return c.doFetch(r, tabIdx, tabName, jql)
@@ -124,17 +125,18 @@ func (c *Cache) doFetch(r Runner, tabIdx int, tabName, jql string) tea.Msg {
 		if cached {
 			return ListFetchedMsg{
 				TabIdx: tabIdx, Issues: entry.issues,
-				Total: entry.total, Err: err, Stale: true,
+				Total: entry.total, Err: err, Stale: true, At: entry.fetchedAt,
 			}
 		}
 		return ListFetchedMsg{TabIdx: tabIdx, Err: err}
 	}
 
+	now := time.Now()
 	c.mu.Lock()
-	c.tabs[tabName] = &tabCacheEntry{issues: issues, total: total, fetchedAt: time.Now()}
+	c.tabs[tabName] = &tabCacheEntry{issues: issues, total: total, fetchedAt: now}
 	c.mu.Unlock()
 
-	return ListFetchedMsg{TabIdx: tabIdx, Issues: issues, Total: total}
+	return ListFetchedMsg{TabIdx: tabIdx, Issues: issues, Total: total, At: now}
 }
 
 // FetchListPageCmd appends the next page of results to the tab cache.
@@ -147,20 +149,22 @@ func (c *Cache) FetchListPageCmd(r Runner, tabIdx int, tabName, jql string, star
 
 		c.mu.Lock()
 		existing := c.tabs[tabName]
+		at := time.Now()
 		if existing != nil {
 			combined := append(existing.issues, issues...)
+			at = existing.fetchedAt
 			c.tabs[tabName] = &tabCacheEntry{
-				issues: combined, total: total, fetchedAt: existing.fetchedAt,
+				issues: combined, total: total, fetchedAt: at,
 			}
 			issues = combined
 		} else {
 			c.tabs[tabName] = &tabCacheEntry{
-				issues: issues, total: total, fetchedAt: time.Now(),
+				issues: issues, total: total, fetchedAt: at,
 			}
 		}
 		c.mu.Unlock()
 
-		return ListFetchedMsg{TabIdx: tabIdx, Issues: issues, Total: total}
+		return ListFetchedMsg{TabIdx: tabIdx, Issues: issues, Total: total, At: at}
 	}
 }
 
