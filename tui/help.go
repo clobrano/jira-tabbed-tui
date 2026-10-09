@@ -69,7 +69,8 @@ func (h HelpOverlay) View() string {
 	nav := []binding{
 		{"j / ↓", "Move down"},
 		{"k / ↑", "Move up"},
-		{"Tab / ← →", "Next / prev tab"},
+		{"gg / G", "Go to top / bottom (rows, links or text)"},
+		{"Tab / h l / ← →", "Next / prev tab"},
 		{"0–9", "Jump to tab by index"},
 		{"+", "Add new tab"},
 		{"-", "Delete current tab"},
@@ -87,7 +88,7 @@ func (h HelpOverlay) View() string {
 			{"Esc", "Back to list (clears history)"},
 			{"⌫  /  ctrl+o", "Navigate back (to the tab and link you left)"},
 			{"ctrl+i", "Navigate forward in history"},
-			{"← / →", "Switch body tab (Description / Comments / Links)"},
+			{"h l / ← →", "Switch body tab (Description / Comments / Links)"},
 			{"Enter", "Open linked issue (on Links tab)"},
 			{h.kb.OpenBrowser, "Open in browser"},
 			{h.kb.Transition, "Change status (of selected link on Links tab)"},

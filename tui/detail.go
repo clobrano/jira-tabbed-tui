@@ -166,6 +166,26 @@ func (d *Detail) moveLinkCursor(delta int) {
 	d.scrollLinkIntoView()
 }
 
+// GotoTop jumps to the first link on the Links tab, or the top of the text.
+func (d Detail) GotoTop() Detail {
+	if d.bodyTab == bodyTabLinks {
+		d.moveLinkCursor(-d.linkCursor)
+	} else {
+		d.vp.GotoTop()
+	}
+	return d
+}
+
+// GotoBottom jumps to the last link on the Links tab, or the end of the text.
+func (d Detail) GotoBottom() Detail {
+	if d.bodyTab == bodyTabLinks {
+		d.moveLinkCursor(len(d.issue.Links) - 1 - d.linkCursor)
+	} else {
+		d.vp.GotoBottom()
+	}
+	return d
+}
+
 // SetBreadcrumb sets the detail history shown above the header when more
 // than one issue has been visited.
 func (d Detail) SetBreadcrumb(keys []string, idx int) Detail {
@@ -256,12 +276,6 @@ func (d Detail) Update(msg tea.Msg) (Detail, tea.Cmd) {
 			return d, nil
 		case "ctrl+u":
 			d.vp.HalfPageUp()
-			return d, nil
-		case "g":
-			d.vp.GotoTop()
-			return d, nil
-		case "G":
-			d.vp.GotoBottom()
 			return d, nil
 		}
 	}
