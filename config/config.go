@@ -197,7 +197,7 @@ func (c *Config) applyDefaults() {
 		kb.Transition = "m"
 	}
 	if kb.AddLabels == "" {
-		kb.AddLabels = "l"
+		kb.AddLabels = "L" // l moves right, like h/j/k
 	}
 	if kb.AddComment == "" {
 		kb.AddComment = "c"
