@@ -185,7 +185,7 @@ detail:
 keybindings:
   # All optional — defaults shown. Override any you like.
   transition: m        # change status
-  add_labels: l        # add labels
+  add_labels: L        # add labels (l moves right, like h/j/k)
   add_comment: c       # add a comment
   assign: a            # assign the issue
   open_browser: o      # open in browser
@@ -229,7 +229,8 @@ right now and what each one does.
 | ------------- | --------------------------------------------- |
 | `j` / `↓`     | Move down                                     |
 | `k` / `↑`     | Move up                                       |
-| `Tab` / `←` `→` | Next / previous tab                         |
+| `gg` / `G`    | Go to the top / bottom (rows, links or text)  |
+| `Tab` / `h` `l` / `←` `→` | Next / previous tab               |
 | `0`–`9`       | Jump to tab by index                          |
 | `+`           | Add a new tab                                 |
 | `-`           | Delete the current tab                        |
@@ -257,12 +258,12 @@ right now and what each one does.
 | `Esc`            | Back to list (clears navigation history)                 |
 | `⌫` / `Ctrl+o`   | Navigate back in history (returns to the tab and link you left) |
 | `Ctrl+i`         | Navigate forward in history                              |
-| `←` / `→`        | Switch body tab (Description / Comments / Links)         |
+| `h` / `l`, `←` / `→` | Switch body tab (Description / Comments / Links)     |
 | `Enter`          | Open the linked issue (on the Links tab)                 |
 | `o`              | Open in browser                                          |
 | `m`              | Change status (of the highlighted linked issue on the Links tab) |
 | `a`              | Assign issue (the highlighted linked issue on the Links tab)     |
-| `l`              | Add labels                                               |
+| `L`              | Add labels                                               |
 | `c`              | Add a comment                                            |
 | `Y`              | Copy issue fields / URL                                  |
 | `r`              | Refresh the issue (and its links) from Jira               |

@@ -183,6 +183,24 @@ func (l IssueList) MoveDown() IssueList {
 	return l
 }
 
+// MoveTop moves the cursor to the first row.
+func (l IssueList) MoveTop() IssueList {
+	if len(l.issues) > 0 {
+		l.cursor = 0
+		l.tbl.GotoTop()
+	}
+	return l
+}
+
+// MoveBottom moves the cursor to the last loaded row.
+func (l IssueList) MoveBottom() IssueList {
+	if len(l.issues) > 0 {
+		l.cursor = len(l.issues) - 1
+		l.tbl.GotoBottom()
+	}
+	return l
+}
+
 func (l IssueList) Cursor() int { return l.cursor }
 
 func (l IssueList) SelectedIssue() (model.Issue, bool) {

@@ -105,6 +105,7 @@ type App struct {
 	detailHistView []DetailViewState // body tab/link cursor last seen at each history entry
 	pendingView   *pendingViewState  // view to restore once a back/forward fetch lands
 	refreshingKey string             // issue being force-refreshed from the detail view
+	pendingG      bool               // first g of a gg (go to top) was pressed
 	fields        []model.Field
 	fieldSelected map[string]bool // working checkbox state (field ID → in sidebar)
 	fieldOriginal map[string]bool // snapshot when overlay opened
@@ -566,6 +567,10 @@ func (a App) isFilterActive() bool {
 }
 
 func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Any key other than g cancels a half-typed gg.
+	if msg.String() != "g" {
+		a.pendingG = false
+	}
 	// Global quit — not when filter input is open.
 	switch msg.String() {
 	case "ctrl+c", "q":
@@ -671,7 +676,11 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	switch msg.String() {
+	key, wait := a.vimKey(msg)
+	if wait {
+		return a, nil
+	}
+	switch key {
 	case "/":
 		tab.list = tab.list.ActivateFilter()
 		return a, nil
@@ -686,6 +695,12 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "k", "up":
 		tab.list = tab.list.MoveUp()
+
+	case "top":
+		tab.list = tab.list.MoveTop()
+
+	case "bottom":
+		tab.list = tab.list.MoveBottom()
 
 	case "enter":
 		if iss, ok := tab.list.SelectedIssue(); ok {
@@ -772,7 +787,11 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key, wait := a.vimKey(msg)
+	if wait {
+		return a, nil
+	}
+	switch key {
 	case "enter":
 		if link, ok := a.detail.SelectedLink(); ok {
 			if link.URL != "" {
@@ -792,6 +811,12 @@ func (a App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if a.detailHistIdx < len(a.detailHistory)-1 {
 			return a.moveHistory(1)
 		}
+
+	case "top":
+		a.detail = a.detail.GotoTop()
+
+	case "bottom":
+		a.detail = a.detail.GotoBottom()
 
 	case "left":
 		a.detail = a.detail.SwitchBodyTab(-1)
@@ -1150,11 +1175,12 @@ func (a App) listHints() []keyHint {
 	hints = append(hints,
 		keyHint{"j/k", "next/prev issue", 7},
 		keyHint{"enter", "open issue", 1},
-		keyHint{"←/→", "prev/next tab", 3},
+		keyHint{"h/l", "prev/next tab", 3},
 		keyHint{kb.Transition, "change status", 2},
 		keyHint{kb.Assign, "assign issue", 4},
 		keyHint{kb.OpenBrowser, "open in browser", 5},
 		keyHint{kb.Copy, "copy fields/URL", 9},
+		keyHint{"gg/G", "top/bottom", 14},
 	)
 	switch {
 	case tab.isSearch:
@@ -1228,7 +1254,7 @@ func (a App) detailHints() []keyHint {
 		)
 	}
 	return append(hints,
-		keyHint{"←/→", "prev/next section", 4},
+		keyHint{"h/l", "prev/next section", 4},
 		keyHint{kb.Transition, status, 1},
 		keyHint{kb.Assign, assign, 5},
 		keyHint{kb.AddComment, "add comment", 9},
@@ -1237,6 +1263,7 @@ func (a App) detailHints() []keyHint {
 		keyHint{kb.OpenBrowser, "open in browser", 6},
 		keyHint{kb.ForceRefresh, "refresh issue", 12},
 		keyHint{kb.FieldDiscover, "list fields", 13},
+		keyHint{"gg/G", "top/bottom", 14},
 		keyHint{"esc", "back to list", 11},
 		keyHint{kb.Help, "all keys", 0},
 	)
@@ -1551,6 +1578,52 @@ func (a App) moveHistory(dir int) (App, tea.Cmd) {
 	a.pendingView = &pendingViewState{key: key, view: a.detailHistView[a.detailHistIdx]}
 	a.detail = a.detail.SetLoading(true)
 	return a, a.cache.FetchDetailCmd(a.runner, key)
+}
+
+// navKey returns the key name used to dispatch msg in the list and detail
+// views. Like j/k for down/up, h/l move left/right (previous/next tab or body
+// section), so they are reported as "left"/"right" unless the user has bound
+// an action to them in the config, in which case the action wins.
+func (a App) navKey(msg tea.KeyMsg) string {
+	k := msg.String()
+	if (k != "h" && k != "l") || a.boundToAction(k) {
+		return k
+	}
+	if k == "h" {
+		return "left"
+	}
+	return "right"
+}
+
+// vimKey resolves the vim-style motions on top of navKey: gg is "top" and G
+// is "bottom" (unless bound to an action). After a first g it returns
+// wait=true and remembers it; the next key completes or cancels the gg.
+func (a *App) vimKey(msg tea.KeyMsg) (key string, wait bool) {
+	key = a.navKey(msg)
+	switch {
+	case key == "g" && !a.boundToAction("g"):
+		if a.pendingG {
+			a.pendingG = false
+			return "top", false
+		}
+		a.pendingG = true
+		return "", true
+	case key == "G" && !a.boundToAction("G"):
+		return "bottom", false
+	}
+	return key, false
+}
+
+// boundToAction reports whether a configured keybinding uses key.
+func (a App) boundToAction(key string) bool {
+	kb := a.cfg.Keybindings
+	for _, k := range []string{kb.Transition, kb.AddLabels, kb.AddComment, kb.Assign, kb.OpenBrowser,
+		kb.FieldDiscover, kb.ForceRefresh, kb.Help, kb.Sort, kb.Copy} {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 // detailActionTarget returns the issue key that move/assign should act on in

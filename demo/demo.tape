@@ -63,9 +63,9 @@ Sleep 1.5s
 # --- open an issue and read the detail ---------------------------------------
 Enter
 Sleep 1.5s
-Right
+Type "l"
 Sleep 1.5s
-Right
+Type "l"
 Sleep 1.5s
 
 # --- Links tab: grouped (Jira / PRs / web), PR states, issue types ----------
@@ -78,9 +78,9 @@ Sleep 1s
 # --- follow links 3 deep, then back and forth: the breadcrumb tracks depth ---
 Enter
 Sleep 1.5s
-Right
+Type "l"
 Sleep 800ms
-Right
+Type "l"
 Sleep 1.5s
 Enter
 Sleep 2s
@@ -102,9 +102,9 @@ Enter
 Sleep 2.5s
 
 # --- copy picker in the detail view: mark key + summary, copy both ------------
-Left
+Type "h"
 Sleep 1s
-Left
+Type "h"
 Sleep 1s
 Type "Y"
 Sleep 2s
