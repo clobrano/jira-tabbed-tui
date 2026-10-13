@@ -89,6 +89,7 @@ type IssueList struct {
 	err          error
 	stale        bool
 	cursor       int
+	offset       int // first row shown; kept so the cursor stays in view
 	width        int
 	height       int
 	spinner      spinner.Model
@@ -108,7 +109,7 @@ func NewIssueList(columns []config.ListColumn) IssueList {
 func (l IssueList) SetSize(w, h int) IssueList {
 	l.width = w
 	l.height = h
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -132,7 +133,7 @@ func (l IssueList) SetIssues(issues []model.Issue, total int, stale bool, err er
 	if l.cursor >= len(l.issues) && len(l.issues) > 0 {
 		l.cursor = len(l.issues) - 1
 	}
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -149,7 +150,7 @@ func (l IssueList) SetSort(field string, asc bool) IssueList {
 		l.issues = l.allIssues
 	}
 	l.cursor = 0
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -158,7 +159,7 @@ func (l IssueList) SortAsc() bool     { return l.sortAsc }
 
 func (l IssueList) SetLoading(v bool) IssueList {
 	l.loading = v
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -170,7 +171,7 @@ func (l IssueList) SetLoadingMore(v bool) IssueList {
 func (l IssueList) MoveUp() IssueList {
 	if l.cursor > 0 {
 		l.cursor--
-		l.tbl.MoveUp(1)
+		l = l.refresh()
 	}
 	return l
 }
@@ -178,7 +179,7 @@ func (l IssueList) MoveUp() IssueList {
 func (l IssueList) MoveDown() IssueList {
 	if l.cursor < len(l.issues)-1 {
 		l.cursor++
-		l.tbl.MoveDown(1)
+		l = l.refresh()
 	}
 	return l
 }
@@ -187,7 +188,7 @@ func (l IssueList) MoveDown() IssueList {
 func (l IssueList) MoveTop() IssueList {
 	if len(l.issues) > 0 {
 		l.cursor = 0
-		l.tbl.GotoTop()
+		l = l.refresh()
 	}
 	return l
 }
@@ -196,8 +197,45 @@ func (l IssueList) MoveTop() IssueList {
 func (l IssueList) MoveBottom() IssueList {
 	if len(l.issues) > 0 {
 		l.cursor = len(l.issues) - 1
-		l.tbl.GotoBottom()
+		l = l.refresh()
 	}
+	return l
+}
+
+// scrollMargin is how many rows of context stay visible above and below the
+// cursor while scrolling (like vim's scrolloff).
+const scrollMargin = 2
+
+// tableHeight is the height handed to the table. The table subtracts its
+// header row when it is created (before our styles add the header's
+// underline), so it shows tableHeight-1 rows.
+func (l IssueList) tableHeight() int {
+	h := l.height - 4
+	if l.filterActive || l.filterQuery != "" {
+		h--
+	}
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
+// visibleRows is how many issue rows fit in the table.
+func (l IssueList) visibleRows() int { return l.tableHeight() - 1 }
+
+// refresh scrolls so the cursor is in view, with scrollMargin rows of
+// context where possible, and rebuilds the table for the visible rows.
+func (l IssueList) refresh() IssueList {
+	n, vis := len(l.issues), l.visibleRows()
+	margin := min(scrollMargin, (vis-1)/2)
+	if l.cursor-margin < l.offset {
+		l.offset = l.cursor - margin
+	}
+	if l.cursor+margin > l.offset+vis-1 {
+		l.offset = l.cursor + margin - vis + 1
+	}
+	l.offset = max(0, min(l.offset, n-vis))
+	l.tbl = l.buildTable()
 	return l
 }
 
@@ -235,7 +273,7 @@ func (l IssueList) ActivateFilter() IssueList {
 	l.filterInput.Focus()
 	l.filterInput.SetValue(l.filterQuery)
 	l.filterInput.CursorEnd()
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -243,7 +281,7 @@ func (l IssueList) ActivateFilter() IssueList {
 func (l IssueList) DeactivateFilter() IssueList {
 	l.filterActive = false
 	l.filterInput.Blur()
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -255,7 +293,7 @@ func (l IssueList) ClearFilter() IssueList {
 	l.filterInput.Blur()
 	l.issues = l.allIssues
 	l.cursor = 0
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l
 }
 
@@ -270,7 +308,7 @@ func (l IssueList) UpdateFilter(msg tea.Msg) (IssueList, tea.Cmd) {
 		l.issues = l.allIssues
 	}
 	l.cursor = 0
-	l.tbl = l.buildTable()
+	l = l.refresh()
 	return l, cmd
 }
 
@@ -438,8 +476,12 @@ func (l IssueList) buildTable() table.Model {
 		cols[i] = table.Column{Title: title, Width: w}
 	}
 
-	rows := make([]table.Row, 0, len(l.issues))
-	for _, iss := range l.issues {
+	// Only the visible window goes to the table: it then never scrolls on its
+	// own, and the cursor row is always on screen.
+	end := min(l.offset+l.visibleRows(), len(l.issues))
+	window := l.issues[min(l.offset, end):end]
+	rows := make([]table.Row, 0, len(window))
+	for _, iss := range window {
 		row := make(table.Row, len(columns))
 		for i, c := range columns {
 			v := issueFieldValue(iss, c.Field)
@@ -452,19 +494,11 @@ func (l IssueList) buildTable() table.Model {
 		rows = append(rows, row)
 	}
 
-	tableHeight := l.height - 4
-	if l.filterActive || l.filterQuery != "" {
-		tableHeight--
-	}
-	if tableHeight < 3 {
-		tableHeight = 3
-	}
-
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(tableHeight),
+		table.WithHeight(l.tableHeight()),
 	)
 	ts := table.DefaultStyles()
 	ts.Header = ts.Header.
@@ -478,8 +512,8 @@ func (l IssueList) buildTable() table.Model {
 		Background(lipgloss.Color("#3333aa")).
 		Bold(true)
 	t.SetStyles(ts)
-	if l.cursor >= 0 && l.cursor < len(rows) {
-		t.SetCursor(l.cursor)
+	if c := l.cursor - l.offset; c >= 0 && c < len(rows) {
+		t.SetCursor(c)
 	}
 	return t
 }
@@ -511,16 +545,32 @@ func (l IssueList) View() string {
 
 	sb.WriteString(tableBaseStyle.Render(l.tbl.View()))
 
-	if l.loadingMore {
-		sb.WriteString("\n" + loadMoreStyle.Render("  Loading more…"))
-	} else if l.HasMore() {
-		sb.WriteString("\n" + loadMoreStyle.Render(
-			fmt.Sprintf("  %d of %d — press j at bottom to load more", len(l.allIssues), l.total)))
-	}
+	sb.WriteString("\n" + loadMoreStyle.Render("  "+l.positionLine()))
 
 	sb.WriteString(l.filterBarView())
 
 	return sb.String()
+}
+
+// positionLine says where the cursor is and what lies outside the visible
+// rows, e.g. "row 31 of 50 · ↑ 20 above · ↓ 19 below · 70 more in Jira (j at
+// the bottom loads them)".
+func (l IssueList) positionLine() string {
+	n := len(l.issues)
+	parts := []string{fmt.Sprintf("row %d of %d", l.cursor+1, n)}
+	if l.offset > 0 {
+		parts = append(parts, fmt.Sprintf("↑ %d above", l.offset))
+	}
+	if below := n - (l.offset + l.visibleRows()); below > 0 {
+		parts = append(parts, fmt.Sprintf("↓ %d below", below))
+	}
+	switch {
+	case l.loadingMore:
+		parts = append(parts, "loading more…")
+	case l.HasMore():
+		parts = append(parts, fmt.Sprintf("%d more in Jira (j at the bottom loads them)", l.total-len(l.allIssues)))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (l IssueList) filterBarView() string {

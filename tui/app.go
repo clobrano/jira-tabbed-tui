@@ -635,6 +635,7 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	a = a.sizeList(a.activeTab)
 	tab := &a.tabs[a.activeTab]
 
 	// Search tab handling.
@@ -1104,15 +1105,34 @@ func (a App) View() string {
 	return base
 }
 
+// listHeight is the number of rows available to tab i's issue list: the
+// screen minus the title and tab bars, the footer and, on the Search tab,
+// the JQL bar.
+func (a App) listHeight(i int) int {
+	b := a
+	b.activeTab = i
+	top := b.titleBar() + "\n" + b.tabBar.SetActive(i).SetWidth(b.width).View()
+	status := b.statusLine.SetHints(b.listHints()).SetWidth(b.width).View()
+	h := b.height - lipgloss.Height(top) - lipgloss.Height(status) - 1
+	if tab := b.tabs[i]; tab.isSearch && tab.search.Query() != "" {
+		h -= lipgloss.Height(tab.search.SetWidth(b.width).View())
+	}
+	return max(h, 1)
+}
+
+// sizeList gives tab i's stored list its current size, so scrolling (which
+// is kept on the list) works with the real number of visible rows.
+func (a App) sizeList(i int) App {
+	if i >= 0 && i < len(a.tabs) && a.width > 0 {
+		a.tabs[i].list = a.tabs[i].list.SetSize(a.width, a.listHeight(i))
+	}
+	return a
+}
+
 func (a App) listView() string {
 	tab := a.tabs[a.activeTab]
 	tabBarView := a.titleBar() + "\n" + a.tabBar.SetActive(a.activeTab).SetWidth(a.width).View()
 	statusView := a.statusLine.SetHints(a.listHints()).SetWidth(a.width).View()
-
-	contentH := a.height - lipgloss.Height(tabBarView) - lipgloss.Height(statusView) - 1
-	if contentH < 1 {
-		contentH = 1
-	}
 
 	var content string
 	if tab.isSearch {
@@ -1121,15 +1141,11 @@ func (a App) listView() string {
 			// No query submitted yet — show only the input bar.
 			content = searchView
 		} else {
-			listH := contentH - lipgloss.Height(searchView)
-			if listH < 1 {
-				listH = 1
-			}
-			tab.list = tab.list.SetSize(a.width, listH)
+			tab.list = tab.list.SetSize(a.width, a.listHeight(a.activeTab))
 			content = searchView + "\n" + tab.list.View()
 		}
 	} else {
-		tab.list = tab.list.SetSize(a.width, contentH)
+		tab.list = tab.list.SetSize(a.width, a.listHeight(a.activeTab))
 		content = tab.list.View()
 	}
 
@@ -1877,6 +1893,9 @@ func (a App) openBrowserCmd(key string) tea.Cmd {
 }
 
 func (a App) resizeAll() App {
+	for i := range a.tabs {
+		a = a.sizeList(i)
+	}
 	a.tabBar = a.tabBar.SetWidth(a.width)
 	a.help = a.help.SetSize(a.width, a.height)
 	a.statusLine = a.statusLine.SetWidth(a.width)
