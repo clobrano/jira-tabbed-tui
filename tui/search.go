@@ -15,11 +15,11 @@ var searchInputStyle = lipgloss.NewStyle().
 var searchHelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Padding(0, 4)
 
 // searchEmptyHelp is shown under the JQL bar until a first query is run.
-func searchEmptyHelp(focused bool) string {
+func searchEmptyHelp(focused bool, editKey string) string {
 	if focused {
 		return "Type a JQL query and press Enter to run it · Esc leaves the field"
 	}
-	return "Press Q to type a JQL query"
+	return "Press " + editKey + " to type a JQL query"
 }
 
 // SearchRunMsg is sent when the user submits a JQL query in the Search tab.

@@ -52,8 +52,9 @@ type Keybindings struct {
 	FieldDiscover string `yaml:"field_discovery"`
 	ForceRefresh  string `yaml:"force_refresh"`
 	Help          string `yaml:"help"`
-	Sort          string `yaml:"sort"` // list-view sort picker (list view only; 's' also defaults transition in detail view)
-	Copy          string `yaml:"copy"` // pick fields/URL to copy to the clipboard
+	Sort          string `yaml:"sort"`     // list-view sort picker (list view only; 's' also defaults transition in detail view)
+	Copy          string `yaml:"copy"`     // pick fields/URL to copy to the clipboard
+	EditJQL       string `yaml:"edit_jql"` // edit the tab's JQL; on the Search tab, type a query
 }
 
 type Config struct {
@@ -222,6 +223,9 @@ func (c *Config) applyDefaults() {
 	}
 	if kb.Copy == "" {
 		kb.Copy = "Y"
+	}
+	if kb.EditJQL == "" {
+		kb.EditJQL = "e"
 	}
 }
 

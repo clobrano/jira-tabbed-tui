@@ -26,21 +26,21 @@ func TestSearchTabFocusOnlyOnQ(t *testing.T) {
 	if a.activeTab != 0 || s.IsFocused() {
 		t.Fatalf("arriving on Search: active=%d focused=%v, want unfocused", a.activeTab, s.IsFocused())
 	}
-	if screen := stripANSI(a.View()); !strings.Contains(screen, "Press Q to type a JQL query") {
+	if screen := stripANSI(a.View()); !strings.Contains(screen, "Press e to type a JQL query") {
 		t.Errorf("empty Search tab doesn't say how to start:\n%s", screen)
 	}
-	if got := hintsPlain(a.listHints()); !strings.HasPrefix(got, "Q type a JQL query") {
+	if got := hintsPlain(a.listHints()); !strings.HasPrefix(got, "e type a JQL query") {
 		t.Errorf("empty Search footer = %q", got)
 	}
 
-	// Q focuses; inside the field Q is typed, not "edit JQL".
-	a = send(t, a, keyMsg("Q"))
-	a = typeText(t, a, "aQb")
+	// e focuses; inside the field e (and Q) are typed, not "edit JQL".
+	a = send(t, a, keyMsg("e"))
+	a = typeText(t, a, "aQeb")
 	if a.overlay != overlayNone {
 		t.Fatalf("typing Q in the field opened overlay %d", a.overlay)
 	}
-	if got := a.tabs[0].search.input.Value(); got != "aQb" {
-		t.Errorf("field = %q, want aQb", got)
+	if got := a.tabs[0].search.input.Value(); got != "aQeb" {
+		t.Errorf("field = %q, want aQeb", got)
 	}
 	if got := hintsPlain(a.listHints()); !strings.Contains(got, "esc leave field") {
 		t.Errorf("focused footer = %q", got)
@@ -48,7 +48,7 @@ func TestSearchTabFocusOnlyOnQ(t *testing.T) {
 
 	// Esc leaves the field and keeps the text; tab keys work again.
 	a = send(t, a, tea.KeyMsg{Type: tea.KeyEsc})
-	if a.tabs[0].search.IsFocused() || a.tabs[0].search.input.Value() != "aQb" {
+	if a.tabs[0].search.IsFocused() || a.tabs[0].search.input.Value() != "aQeb" {
 		t.Errorf("after Esc: focused=%v text=%q", a.tabs[0].search.IsFocused(), a.tabs[0].search.input.Value())
 	}
 	a = send(t, a, keyMsg("l"))
@@ -56,15 +56,15 @@ func TestSearchTabFocusOnlyOnQ(t *testing.T) {
 		t.Errorf("l after Esc: active tab %d, want 1", a.activeTab)
 	}
 
-	// Back on Search, Q resumes editing the kept text and Enter runs it.
-	a = send(t, a, keyMsg("h"), keyMsg("Q"))
+	// Back on Search, e resumes editing the kept text and Enter runs it.
+	a = send(t, a, keyMsg("h"), keyMsg("e"))
 	m, cmd := a.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	a = m.(App)
 	if cmd == nil {
 		t.Fatal("Enter didn't run the query")
 	}
-	if msg, ok := cmd().(SearchRunMsg); !ok || msg.Query != "aQb" {
-		t.Errorf("Enter ran %#v, want SearchRunMsg{aQb}", cmd())
+	if msg, ok := cmd().(SearchRunMsg); !ok || msg.Query != "aQeb" {
+		t.Errorf("Enter ran %#v, want SearchRunMsg{aQeb}", cmd())
 	}
 	if a.tabs[0].search.IsFocused() {
 		t.Error("field still focused after running the query")
