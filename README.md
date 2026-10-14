@@ -221,8 +221,10 @@ many issues the current tab holds with a colour-coded count per status, and on
 the right how fresh the data is (`updated 2m ago`, or `refresh failed · data
 from 6m ago` when a refresh fails and older results are shown). On narrow
 terminals the less important parts give way first: the tagline, the user, the
-server, then the rarest statuses. The **footer** lists the keys you can use
-right now and what each one does.
+server, then the rarest statuses. The **footer** lists the everyday keys
+for the current view (in the list: moving, opening, filter, sort and edit
+JQL); actions on an issue — change status, assign, copy, open in browser —
+plus refresh and quit are listed under `?`.
 
 ### Navigation
 

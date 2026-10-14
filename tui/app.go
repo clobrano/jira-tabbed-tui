@@ -1197,44 +1197,34 @@ func (a App) listHints() []keyHint {
 		}
 	}
 
-	var hints []keyHint
-	if tab.list.SortField() != "" {
+	// Movement first, then enter, then the list tools (filter, sort, edit
+	// JQL). Actions on an issue (change status, assign, copy, open in
+	// browser), refresh and quit are listed under "? all keys".
+	hints := []keyHint{
+		{"j/k", "move", 3},
+		{"h/l", "switch tab", 2},
+		{"gg/G", "top/bottom", 7},
+		{"enter", "open", 1},
+	}
+	if tab.list.IsFilterApplied() {
+		hints = append(hints,
+			keyHint{"/", "edit filter", 5},
+			keyHint{"esc", "clear filter", 5},
+		)
+	} else if !tab.isSearch {
+		hints = append(hints, keyHint{"/", "filter", 5})
+	}
+	sort := "sort"
+	if f := tab.list.SortField(); f != "" {
 		dir := "▲"
 		if !tab.list.SortAsc() {
 			dir = "▼"
 		}
-		hints = append(hints, keyHint{"", "sorted by " + tab.list.SortField() + " " + dir, 6})
-	}
-	hints = append(hints,
-		keyHint{"j/k", "next/prev issue", 7},
-		keyHint{"enter", "open issue", 1},
-		keyHint{"h/l", "prev/next tab", 3},
-		keyHint{kb.Transition, "change status", 2},
-		keyHint{kb.Assign, "assign issue", 4},
-		keyHint{kb.OpenBrowser, "open in browser", 5},
-		keyHint{kb.Copy, "copy fields/URL", 9},
-		keyHint{"gg/G", "top/bottom", 14},
-	)
-	switch {
-	case tab.isSearch:
-		hints = append(hints, keyHint{kb.EditJQL, "edit JQL", 8})
-	case tab.list.IsFilterApplied():
-		hints = append(hints,
-			keyHint{"/", "edit filter", 8},
-			keyHint{"esc", "clear filter", 6},
-		)
-	default:
-		hints = append(hints, keyHint{"/", "filter rows", 8})
-	}
-	hints = append(hints, keyHint{kb.Sort, "sort list", 10})
-	if !tab.isSearch {
-		hints = append(hints,
-			keyHint{kb.ForceRefresh, "refresh tab", 11},
-			keyHint{kb.EditJQL, "edit JQL", 12},
-		)
+		sort = "sort (" + f + " " + dir + ")"
 	}
 	return append(hints,
-		keyHint{"q", "quit", 13},
+		keyHint{kb.Sort, sort, 6},
+		keyHint{kb.EditJQL, "edit JQL", 4},
 		keyHint{kb.Help, "all keys", 0},
 	)
 }

@@ -12,31 +12,29 @@ func TestListFooterHints(t *testing.T) {
 	a.activeTab = 1
 	hints := a.listHints()
 
-	// Wide: every hint, in order, saying what each key does.
-	want := "j/k next/prev issue · enter open issue · h/l prev/next tab · m change status · a assign issue · " +
-		"o open in browser · Y copy fields/URL · gg/G top/bottom · / filter rows · s sort list · r refresh tab · e edit JQL · q quit · ? all keys"
+	// Wide: movement, then enter, then filter, sort and edit JQL. Issue
+	// actions, refresh and quit live under "? all keys".
+	want := "j/k move · h/l switch tab · gg/G top/bottom · enter open · / filter · s sort · e edit JQL · ? all keys"
 	if got := hintsPlain(fitHints(hints, 300)); got != want {
 		t.Errorf("wide footer:\n got %q\nwant %q", got, want)
 	}
 
-	// 80 columns: the least important hints give way, nothing is cut in
-	// half, and "? all keys" stays.
+	// 80 columns: top/bottom and sort give way; edit JQL stays, nothing is
+	// cut in half, and "? all keys" stays.
 	narrow := hintsPlain(fitHints(hints, 78))
-	if lipgloss.Width(narrow) > 78 {
-		t.Errorf("80-column footer is %d wide: %q", lipgloss.Width(narrow), narrow)
-	}
-	for _, keep := range []string{"enter open issue", "m change status", "? all keys"} {
-		if !strings.Contains(narrow, keep) {
-			t.Errorf("80-column footer lost %q: %q", keep, narrow)
-		}
-	}
-	if strings.Contains(narrow, "edit JQL") || strings.Contains(narrow, "…") {
-		t.Errorf("80-column footer keeps a low-priority hint or cuts one: %q", narrow)
+	if want := "j/k move · h/l switch tab · enter open · / filter · e edit JQL · ? all keys"; narrow != want {
+		t.Errorf("80-column footer:\n got %q\nwant %q", narrow, want)
 	}
 
 	// Very narrow: only "? all keys" is left.
 	if got := hintsPlain(fitHints(hints, 12)); got != "? all keys" {
 		t.Errorf("tiny footer = %q", got)
+	}
+
+	// A sorted list says how, in the sort hint.
+	a.tabs[1].list = a.tabs[1].list.SetSort("priority", false)
+	if got := hintsPlain(fitHints(a.listHints(), 300)); !strings.Contains(got, "s sort (priority ▼)") {
+		t.Errorf("sorted footer = %q", got)
 	}
 }
 
