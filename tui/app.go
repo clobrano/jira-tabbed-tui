@@ -604,6 +604,11 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case a.view == viewList && a.activeTab < len(a.tabs):
 			tab := &a.tabs[a.activeTab]
+			if tab.isSearch && tab.search.IsFocused() {
+				// Leave the JQL bar, keeping what was typed.
+				tab.search = tab.search.Blur()
+				return a, nil
+			}
 			if !tab.isSearch && (tab.list.IsFilterActive() || tab.list.IsFilterApplied()) {
 				tab.list = tab.list.ClearFilter()
 				return a, nil
@@ -644,11 +649,14 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return a, tea.Quit
 		case "Q":
-			// Refocus the JQL input from the list.
+			// Q focuses the JQL bar; inside it, Q is just a letter.
 			if !tab.search.IsFocused() {
 				tab.search = tab.search.Focus()
 				return a, nil
 			}
+			var cmd tea.Cmd
+			tab.search, cmd = tab.search.Update(msg)
+			return a, cmd
 		case "tab", "shift+tab":
 			// Allow tab switching even when JQL input is focused; fall through.
 		default:
@@ -1138,8 +1146,8 @@ func (a App) listView() string {
 	if tab.isSearch {
 		searchView := tab.search.SetWidth(a.width).View()
 		if tab.search.Query() == "" {
-			// No query submitted yet — show only the input bar.
-			content = searchView
+			// No query run yet: the input bar and how to use it.
+			content = searchView + "\n" + searchHelpStyle.Render(searchEmptyHelp(tab.search.IsFocused()))
 		} else {
 			tab.list = tab.list.SetSize(a.width, a.listHeight(a.activeTab))
 			content = searchView + "\n" + tab.list.View()
@@ -1168,8 +1176,17 @@ func (a App) listHints() []keyHint {
 	if tab.isSearch && tab.search.IsFocused() {
 		return []keyHint{
 			{"enter", "run JQL", 0},
+			{"esc", "leave field", 0},
 			{"tab", "next tab", 2},
 			{"ctrl+c", "quit", 1},
+		}
+	}
+	if tab.isSearch && tab.search.Query() == "" {
+		return []keyHint{
+			{"Q", "type a JQL query", 0},
+			{"h/l", "prev/next tab", 2},
+			{"q", "quit", 1},
+			{kb.Help, "all keys", 0},
 		}
 	}
 	if tab.list.IsFilterActive() {
@@ -1553,10 +1570,8 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 	a.activeTab = idx
 	tab := a.tabs[idx]
 	if tab.isSearch {
-		// Only pull focus to the JQL bar when no query has been run yet.
-		if tab.search.Query() == "" {
-			a.tabs[idx].search = tab.search.Focus()
-		}
+		// The JQL bar is not focused on arrival, so h/l, digits and q keep
+		// working; Q focuses it, like editing any other tab's JQL.
 		return a, nil
 	}
 	a.tabs[idx].list = tab.list.SetLoading(true)

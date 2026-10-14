@@ -234,7 +234,7 @@ right now and what each one does.
 | `0`–`9`       | Jump to tab by index                          |
 | `+`           | Add a new tab                                 |
 | `-`           | Delete the current tab                        |
-| `Q`           | Edit the current tab's JQL                     |
+| `Q`           | Edit the current tab's JQL (Search tab: type a query; `Esc` leaves the field) |
 | `/`           | Fuzzy-filter the loaded rows                   |
 | `Enter`       | Open issue detail                             |
 | `r`           | Refresh the current tab                        |
