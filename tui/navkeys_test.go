@@ -34,11 +34,14 @@ func TestHLSwitchTabsInListView(t *testing.T) {
 		t.Errorf("h: active tab = %d, want 1", a.activeTab)
 	}
 
-	// On the Search tab the JQL field has focus: h/l are typed, like the
-	// arrows move its cursor; Tab still leaves.
-	a = send(t, a, keyMsg("h"), keyMsg("l"))
-	if a.activeTab != 0 || a.tabs[0].search.input.Value() != "l" {
-		t.Errorf("search tab: active=%d query=%q, want 0 and \"l\"", a.activeTab, a.tabs[0].search.input.Value())
+	// The Search tab doesn't grab focus on arrival: h/l pass through it.
+	a = send(t, a, keyMsg("h"))
+	if a.activeTab != 0 || a.tabs[0].search.IsFocused() {
+		t.Errorf("h onto Search: active=%d focused=%v, want 0 and unfocused", a.activeTab, a.tabs[0].search.IsFocused())
+	}
+	a = send(t, a, keyMsg("l"))
+	if a.activeTab != 1 || a.tabs[0].search.input.Value() != "" {
+		t.Errorf("l from Search: active=%d query=%q, want 1 and empty", a.activeTab, a.tabs[0].search.input.Value())
 	}
 }
 

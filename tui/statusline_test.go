@@ -14,7 +14,7 @@ func TestListFooterHints(t *testing.T) {
 
 	// Wide: every hint, in order, saying what each key does.
 	want := "j/k next/prev issue · enter open issue · h/l prev/next tab · m change status · a assign issue · " +
-		"o open in browser · Y copy fields/URL · gg/G top/bottom · / filter rows · s sort list · r refresh tab · Q edit JQL · q quit · ? all keys"
+		"o open in browser · Y copy fields/URL · gg/G top/bottom · / filter rows · s sort list · r refresh tab · e edit JQL · q quit · ? all keys"
 	if got := hintsPlain(fitHints(hints, 300)); got != want {
 		t.Errorf("wide footer:\n got %q\nwant %q", got, want)
 	}

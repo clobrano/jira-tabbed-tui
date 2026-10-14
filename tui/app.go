@@ -604,6 +604,11 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case a.view == viewList && a.activeTab < len(a.tabs):
 			tab := &a.tabs[a.activeTab]
+			if tab.isSearch && tab.search.IsFocused() {
+				// Leave the JQL bar, keeping what was typed.
+				tab.search = tab.search.Blur()
+				return a, nil
+			}
 			if !tab.isSearch && (tab.list.IsFilterActive() || tab.list.IsFilterApplied()) {
 				tab.list = tab.list.ClearFilter()
 				return a, nil
@@ -643,12 +648,15 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return a, tea.Quit
-		case "Q":
-			// Refocus the JQL input from the list.
+		case a.cfg.Keybindings.EditJQL:
+			// The edit-JQL key focuses the JQL bar; inside it, it's just a letter.
 			if !tab.search.IsFocused() {
 				tab.search = tab.search.Focus()
 				return a, nil
 			}
+			var cmd tea.Cmd
+			tab.search, cmd = tab.search.Update(msg)
+			return a, cmd
 		case "tab", "shift+tab":
 			// Allow tab switching even when JQL input is focused; fall through.
 		default:
@@ -727,7 +735,7 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a.switchToTab(n)
 		}
 
-	case "Q":
+	case a.cfg.Keybindings.EditJQL:
 		tab := a.tabs[a.activeTab]
 		a.editJQLM = actions.NewEditJQLModel(tab.name, tab.jql).SetSize(a.width, a.height)
 		a.overlay = overlayEditJQL
@@ -1138,8 +1146,8 @@ func (a App) listView() string {
 	if tab.isSearch {
 		searchView := tab.search.SetWidth(a.width).View()
 		if tab.search.Query() == "" {
-			// No query submitted yet — show only the input bar.
-			content = searchView
+			// No query run yet: the input bar and how to use it.
+			content = searchView + "\n" + searchHelpStyle.Render(searchEmptyHelp(tab.search.IsFocused(), a.cfg.Keybindings.EditJQL))
 		} else {
 			tab.list = tab.list.SetSize(a.width, a.listHeight(a.activeTab))
 			content = searchView + "\n" + tab.list.View()
@@ -1168,8 +1176,17 @@ func (a App) listHints() []keyHint {
 	if tab.isSearch && tab.search.IsFocused() {
 		return []keyHint{
 			{"enter", "run JQL", 0},
+			{"esc", "leave field", 0},
 			{"tab", "next tab", 2},
 			{"ctrl+c", "quit", 1},
+		}
+	}
+	if tab.isSearch && tab.search.Query() == "" {
+		return []keyHint{
+			{kb.EditJQL, "type a JQL query", 0},
+			{"h/l", "prev/next tab", 2},
+			{"q", "quit", 1},
+			{kb.Help, "all keys", 0},
 		}
 	}
 	if tab.list.IsFilterActive() {
@@ -1200,7 +1217,7 @@ func (a App) listHints() []keyHint {
 	)
 	switch {
 	case tab.isSearch:
-		hints = append(hints, keyHint{"Q", "edit JQL", 8})
+		hints = append(hints, keyHint{kb.EditJQL, "edit JQL", 8})
 	case tab.list.IsFilterApplied():
 		hints = append(hints,
 			keyHint{"/", "edit filter", 8},
@@ -1213,7 +1230,7 @@ func (a App) listHints() []keyHint {
 	if !tab.isSearch {
 		hints = append(hints,
 			keyHint{kb.ForceRefresh, "refresh tab", 11},
-			keyHint{"Q", "edit JQL", 12},
+			keyHint{kb.EditJQL, "edit JQL", 12},
 		)
 	}
 	return append(hints,
@@ -1553,10 +1570,8 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 	a.activeTab = idx
 	tab := a.tabs[idx]
 	if tab.isSearch {
-		// Only pull focus to the JQL bar when no query has been run yet.
-		if tab.search.Query() == "" {
-			a.tabs[idx].search = tab.search.Focus()
-		}
+		// The JQL bar is not focused on arrival, so h/l, digits and q keep
+		// working; the edit-JQL key (e) focuses it, as on any other tab.
 		return a, nil
 	}
 	a.tabs[idx].list = tab.list.SetLoading(true)
@@ -1634,7 +1649,7 @@ func (a *App) vimKey(msg tea.KeyMsg) (key string, wait bool) {
 func (a App) boundToAction(key string) bool {
 	kb := a.cfg.Keybindings
 	for _, k := range []string{kb.Transition, kb.AddLabels, kb.AddComment, kb.Assign, kb.OpenBrowser,
-		kb.FieldDiscover, kb.ForceRefresh, kb.Help, kb.Sort, kb.Copy} {
+		kb.FieldDiscover, kb.ForceRefresh, kb.Help, kb.Sort, kb.Copy, kb.EditJQL} {
 		if k == key {
 			return true
 		}

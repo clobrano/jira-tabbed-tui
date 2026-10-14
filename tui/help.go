@@ -74,7 +74,7 @@ func (h HelpOverlay) View() string {
 		{"0–9", "Jump to tab by index"},
 		{"+", "Add new tab"},
 		{"-", "Delete current tab"},
-		{"Q", "Edit tab JQL  /  Search: focus JQL bar"},
+		{h.kb.EditJQL, "Edit tab JQL  /  Search: type a query (Esc leaves)"},
 		{"/", "Fuzzy-filter loaded rows"},
 		{"Enter", "Open issue detail"},
 		{h.kb.ForceRefresh, "Refresh current tab"},
