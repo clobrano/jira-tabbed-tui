@@ -1247,48 +1247,35 @@ func (a App) detailView() string {
 
 // detailHints are the footer hints for the detail view (see listHints).
 func (a App) detailHints() []keyHint {
-	kb := a.cfg.Keybindings
-	var hints []keyHint
+	// Like the list: movement first (including history back/forward), then
+	// enter and esc. Actions on the issue (change status, assign, comment,
+	// labels, copy, open in browser, refresh, fields) are under "? all keys".
+	link, onLink := a.detail.SelectedLink()
+	move := "scroll"
+	if onLink {
+		move = "move"
+	}
+	hints := []keyHint{
+		{"j/k", move, 3},
+		{"h/l", "switch section", 2},
+		{"gg/G", "top/bottom", 7},
+	}
 	if a.detailHistIdx > 0 {
-		hints = append(hints, keyHint{"⌫/ctrl+o", "go back", 2})
+		hints = append(hints, keyHint{"⌫/ctrl+o", "back", 4})
 	}
 	if a.detailHistIdx < len(a.detailHistory)-1 {
-		hints = append(hints, keyHint{"ctrl+i", "go forward", 3})
+		hints = append(hints, keyHint{"ctrl+i", "forward", 5})
 	}
-
-	// On a linked Jira issue, status/assign act on the link, so name it.
-	status, assign := "change status", "assign issue"
-	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
-		status, assign = "change "+key+" status", "assign "+key
-	}
-	if link, ok := a.detail.SelectedLink(); ok {
+	if onLink {
 		open := "open " + link.Key
 		if link.URL != "" {
-			open = "open link in browser"
+			open = "open in browser"
 		}
-		hints = append(hints,
-			keyHint{"j/k", "next/prev link", 7},
-			keyHint{"enter", open, 1},
-		)
-	} else {
-		hints = append(hints,
-			keyHint{"j/k", "scroll", 7},
-			keyHint{"ctrl+d/u", "page down/up", 12},
-		)
+		hints = append(hints, keyHint{"enter", open, 1})
 	}
 	return append(hints,
-		keyHint{"h/l", "prev/next section", 4},
-		keyHint{kb.Transition, status, 1},
-		keyHint{kb.Assign, assign, 5},
-		keyHint{kb.AddComment, "add comment", 9},
-		keyHint{kb.AddLabels, "add labels", 10},
-		keyHint{kb.Copy, "copy fields/URL", 8},
-		keyHint{kb.OpenBrowser, "open in browser", 6},
-		keyHint{kb.ForceRefresh, "refresh issue", 12},
-		keyHint{kb.FieldDiscover, "list fields", 13},
-		keyHint{"gg/G", "top/bottom", 14},
-		keyHint{"esc", "back to list", 11},
-		keyHint{kb.Help, "all keys", 0},
+		keyHint{"esc", "list", 6},
+		keyHint{a.cfg.Keybindings.Help, "all keys", 0},
 	)
 }
 

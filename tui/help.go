@@ -86,6 +86,7 @@ func (h HelpOverlay) View() string {
 	if h.inDetail {
 		detail := []binding{
 			{"Esc", "Back to list (clears history)"},
+			{"ctrl+d / ctrl+u", "Page down / up"},
 			{"⌫  /  ctrl+o", "Navigate back (to the tab and link you left)"},
 			{"ctrl+i", "Navigate forward in history"},
 			{"h l / ← →", "Switch body tab (Description / Comments / Links)"},

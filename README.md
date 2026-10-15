@@ -222,9 +222,10 @@ the right how fresh the data is (`updated 2m ago`, or `refresh failed · data
 from 6m ago` when a refresh fails and older results are shown). On narrow
 terminals the less important parts give way first: the tagline, the user, the
 server, then the rarest statuses. The **footer** lists the everyday keys
-for the current view (in the list: moving, opening, filter, sort and edit
-JQL); actions on an issue — change status, assign, copy, open in browser —
-plus refresh and quit are listed under `?`.
+for the current view: moving (and, in the task view, back/forward through
+the issues you followed), opening, and in the list filter, sort and edit JQL.
+Actions on an issue (change status, assign, comment, labels, copy, open in
+browser), refresh and quit are listed under `?`.
 
 ### Navigation
 
