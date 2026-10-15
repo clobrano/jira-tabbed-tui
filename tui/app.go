@@ -566,15 +566,29 @@ func (a App) isFilterActive() bool {
 	return !tab.isSearch && tab.list.IsFilterActive()
 }
 
+// isTyping reports whether a text field in the list view has the keyboard:
+// the fuzzy filter, or the Search tab's JQL bar.
+func (a App) isTyping() bool {
+	if a.view != viewList || a.activeTab >= len(a.tabs) {
+		return false
+	}
+	tab := a.tabs[a.activeTab]
+	return a.isFilterActive() || (tab.isSearch && tab.search.IsFocused())
+}
+
 func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Any key other than g cancels a half-typed gg.
 	if msg.String() != "g" {
 		a.pendingG = false
 	}
-	// Global quit — not when filter input is open.
+	// Quit: ctrl+c from anywhere; q from the list or the task view unless
+	// a text field has the keyboard. In dialogs q keeps its meaning (close
+	// help, cancel, or a typed letter).
 	switch msg.String() {
-	case "ctrl+c", "q":
-		if a.overlay == overlayNone && a.view == viewList && !a.isFilterActive() {
+	case "ctrl+c":
+		return a, tea.Quit
+	case "q":
+		if a.overlay == overlayNone && !a.isTyping() {
 			return a, tea.Quit
 		}
 		if a.overlay == overlayHelp {
