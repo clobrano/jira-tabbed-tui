@@ -250,7 +250,7 @@ browser), refresh and quit are listed under `?`.
 | Key | Action                                      |
 | --- | ------------------------------------------- |
 | `o` | Open in browser (without entering detail)   |
-| `m` | Change status                               |
+| `m` | Move status                                 |
 | `a` | Assign issue                                |
 | `Y` | Copy column values / issue URL              |
 | `s` | Sort the list                               |
@@ -265,7 +265,7 @@ browser), refresh and quit are listed under `?`.
 | `h` / `l`, `←` / `→` | Switch body tab (Description / Comments / Links)     |
 | `Enter`          | Open the linked issue (on the Links tab)                 |
 | `o`              | Open in browser                                          |
-| `m`              | Change status (of the highlighted linked issue on the Links tab) |
+| `m`              | Move status (of the highlighted linked issue on the Links tab)   |
 | `a`              | Assign issue (the highlighted linked issue on the Links tab)     |
 | `L`              | Add labels                                               |
 | `c`              | Add a comment                                            |
