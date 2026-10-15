@@ -14,7 +14,7 @@ func TestListFooterHints(t *testing.T) {
 
 	// Wide: movement, then enter, then filter, sort and edit JQL. Issue
 	// actions, refresh and quit live under "? all keys".
-	want := "j/k move · h/l switch tab · gg/G top/bottom · enter open · / filter · s sort · e edit JQL · ? all keys"
+	want := "j/k up/down · h/l switch tab · gg/G top/bottom · enter open · / filter · s sort · e edit JQL · ? all keys"
 	if got := hintsPlain(fitHints(hints, 300)); got != want {
 		t.Errorf("wide footer:\n got %q\nwant %q", got, want)
 	}
@@ -22,7 +22,7 @@ func TestListFooterHints(t *testing.T) {
 	// 80 columns: top/bottom and sort give way; edit JQL stays, nothing is
 	// cut in half, and "? all keys" stays.
 	narrow := hintsPlain(fitHints(hints, 78))
-	if want := "j/k move · h/l switch tab · enter open · / filter · e edit JQL · ? all keys"; narrow != want {
+	if want := "j/k up/down · h/l switch tab · enter open · / filter · e edit JQL · ? all keys"; narrow != want {
 		t.Errorf("80-column footer:\n got %q\nwant %q", narrow, want)
 	}
 
@@ -53,7 +53,7 @@ func TestDetailFooter(t *testing.T) {
 	// Links tab: j/k moves between links and enter names the target.
 	a = send(t, a, keyMsg("l"), keyMsg("l"))
 	if got, want := hintsPlain(fitHints(a.detailHints(), 300)),
-		"j/k move · h/l switch section · gg/G top/bottom · enter open P-2 · esc list · ? all keys"; got != want {
+		"j/k up/down · h/l switch section · gg/G top/bottom · enter open P-2 · esc list · ? all keys"; got != want {
 		t.Errorf("links footer:\n got %q\nwant %q", got, want)
 	}
 

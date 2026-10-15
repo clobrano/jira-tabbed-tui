@@ -1201,7 +1201,7 @@ func (a App) listHints() []keyHint {
 	// JQL). Actions on an issue (change status, assign, copy, open in
 	// browser), refresh and quit are listed under "? all keys".
 	hints := []keyHint{
-		{"j/k", "move", 3},
+		{"j/k", "up/down", 3},
 		{"h/l", "switch tab", 2},
 		{"gg/G", "top/bottom", 7},
 		{"enter", "open", 1},
@@ -1253,7 +1253,7 @@ func (a App) detailHints() []keyHint {
 	link, onLink := a.detail.SelectedLink()
 	move := "scroll"
 	if onLink {
-		move = "move"
+		move = "up/down"
 	}
 	hints := []keyHint{
 		{"j/k", move, 3},
