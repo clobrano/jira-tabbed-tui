@@ -12,55 +12,71 @@ func TestListFooterHints(t *testing.T) {
 	a.activeTab = 1
 	hints := a.listHints()
 
-	// Wide: every hint, in order, saying what each key does.
-	want := "j/k next/prev issue · enter open issue · h/l prev/next tab · m change status · a assign issue · " +
-		"o open in browser · Y copy fields/URL · gg/G top/bottom · / filter rows · s sort list · r refresh tab · e edit JQL · q quit · ? all keys"
+	// Wide: movement, then enter, then filter, sort and edit JQL. Issue
+	// actions, refresh and quit live under "? all keys".
+	want := "j/k up/down · h/l switch tab · gg/G top/bottom · enter open · / filter · s sort · e edit JQL · ? all keys"
 	if got := hintsPlain(fitHints(hints, 300)); got != want {
 		t.Errorf("wide footer:\n got %q\nwant %q", got, want)
 	}
 
-	// 80 columns: the least important hints give way, nothing is cut in
-	// half, and "? all keys" stays.
+	// 80 columns: top/bottom and sort give way; edit JQL stays, nothing is
+	// cut in half, and "? all keys" stays.
 	narrow := hintsPlain(fitHints(hints, 78))
-	if lipgloss.Width(narrow) > 78 {
-		t.Errorf("80-column footer is %d wide: %q", lipgloss.Width(narrow), narrow)
-	}
-	for _, keep := range []string{"enter open issue", "m change status", "? all keys"} {
-		if !strings.Contains(narrow, keep) {
-			t.Errorf("80-column footer lost %q: %q", keep, narrow)
-		}
-	}
-	if strings.Contains(narrow, "edit JQL") || strings.Contains(narrow, "…") {
-		t.Errorf("80-column footer keeps a low-priority hint or cuts one: %q", narrow)
+	if want := "j/k up/down · h/l switch tab · enter open · / filter · e edit JQL · ? all keys"; narrow != want {
+		t.Errorf("80-column footer:\n got %q\nwant %q", narrow, want)
 	}
 
 	// Very narrow: only "? all keys" is left.
 	if got := hintsPlain(fitHints(hints, 12)); got != "? all keys" {
 		t.Errorf("tiny footer = %q", got)
 	}
+
+	// A sorted list says how, in the sort hint.
+	a.tabs[1].list = a.tabs[1].list.SetSort("priority", false)
+	if got := hintsPlain(fitHints(a.listHints(), 300)); !strings.Contains(got, "s sort (priority ▼)") {
+		t.Errorf("sorted footer = %q", got)
+	}
 }
 
-func TestDetailFooterNamesLinkedIssue(t *testing.T) {
+func TestDetailFooter(t *testing.T) {
 	a := newTestApp(t)
 	a.view = viewDetail
 	a = a.pushHistory("P-1")
-	a = send(t, a, fetched("P-1", "P-2"), keyMsg("right"), keyMsg("right"))
+	a = send(t, a, fetched("P-1", "P-2"))
 
-	got := hintsPlain(fitHints(a.detailHints(), 300))
-	for _, want := range []string{"j/k next/prev link", "enter open P-2", "m change P-2 status", "a assign P-2", "? all keys"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("detail footer missing %q: %q", want, got)
+	// Description tab, no history yet.
+	if got, want := hintsPlain(fitHints(a.detailHints(), 300)),
+		"j/k scroll · h/l switch section · gg/G top/bottom · esc list · ? all keys"; got != want {
+		t.Errorf("description footer:\n got %q\nwant %q", got, want)
+	}
+
+	// Links tab: j/k moves between links and enter names the target.
+	a = send(t, a, keyMsg("l"), keyMsg("l"))
+	if got, want := hintsPlain(fitHints(a.detailHints(), 300)),
+		"j/k up/down · h/l switch section · gg/G top/bottom · enter open P-2 · esc list · ? all keys"; got != want {
+		t.Errorf("links footer:\n got %q\nwant %q", got, want)
+	}
+
+	// After following the link, back is offered; forward once we go back.
+	a = send(t, a, keyMsg("enter"), fetched("P-2"))
+	if got := hintsPlain(fitHints(a.detailHints(), 300)); !strings.Contains(got, "⌫/ctrl+o back") || strings.Contains(got, "forward") {
+		t.Errorf("footer after following a link = %q", got)
+	}
+	a = send(t, a, keyMsg("backspace"), fetched("P-1", "P-2"))
+	if got := hintsPlain(fitHints(a.detailHints(), 300)); !strings.Contains(got, "ctrl+i forward") {
+		t.Errorf("footer after going back = %q", got)
+	}
+
+	// Issue actions are under "? all keys", not in the footer.
+	for _, gone := range []string{"change", "assign", "comment", "labels", "copy", "refresh", "fields"} {
+		if got := hintsPlain(fitHints(a.detailHints(), 300)); strings.Contains(got, gone) {
+			t.Errorf("footer still lists %q: %q", gone, got)
 		}
 	}
-	if strings.Contains(got, "go back") {
-		t.Errorf("no history yet, but footer offers go back: %q", got)
-	}
 
-	// After opening the link, going back is offered first.
-	a = send(t, a, keyMsg("enter"), fetched("P-2"))
-	got = hintsPlain(fitHints(a.detailHints(), 300))
-	if !strings.HasPrefix(got, "⌫/ctrl+o go back · ") || !strings.Contains(got, "j/k scroll") {
-		t.Errorf("footer after following a link = %q", got)
+	// 80 columns: everything but top/bottom fits.
+	if got := hintsPlain(fitHints(a.detailHints(), 78)); strings.Contains(got, "gg/G") || !strings.Contains(got, "enter open P-2") {
+		t.Errorf("80-column footer = %q", got)
 	}
 }
 

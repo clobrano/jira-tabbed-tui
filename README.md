@@ -221,8 +221,11 @@ many issues the current tab holds with a colour-coded count per status, and on
 the right how fresh the data is (`updated 2m ago`, or `refresh failed · data
 from 6m ago` when a refresh fails and older results are shown). On narrow
 terminals the less important parts give way first: the tagline, the user, the
-server, then the rarest statuses. The **footer** lists the keys you can use
-right now and what each one does.
+server, then the rarest statuses. The **footer** lists the everyday keys
+for the current view: moving (and, in the task view, back/forward through
+the issues you followed), opening, and in the list filter, sort and edit JQL.
+Actions on an issue (change status, assign, comment, labels, copy, open in
+browser), refresh and quit are listed under `?`.
 
 ### Navigation
 
@@ -247,7 +250,7 @@ right now and what each one does.
 | Key | Action                                      |
 | --- | ------------------------------------------- |
 | `o` | Open in browser (without entering detail)   |
-| `m` | Change status                               |
+| `m` | Move status                                 |
 | `a` | Assign issue                                |
 | `Y` | Copy column values / issue URL              |
 | `s` | Sort the list                               |
@@ -262,7 +265,7 @@ right now and what each one does.
 | `h` / `l`, `←` / `→` | Switch body tab (Description / Comments / Links)     |
 | `Enter`          | Open the linked issue (on the Links tab)                 |
 | `o`              | Open in browser                                          |
-| `m`              | Change status (of the highlighted linked issue on the Links tab) |
+| `m`              | Move status (of the highlighted linked issue on the Links tab)   |
 | `a`              | Assign issue (the highlighted linked issue on the Links tab)     |
 | `L`              | Add labels                                               |
 | `c`              | Add a comment                                            |

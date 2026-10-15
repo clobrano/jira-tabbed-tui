@@ -74,7 +74,7 @@ func (h HelpOverlay) View() string {
 		{"0–9", "Jump to tab by index"},
 		{"+", "Add new tab"},
 		{"-", "Delete current tab"},
-		{h.kb.EditJQL, "Edit tab JQL  /  Search: type a query (Esc leaves)"},
+		{h.kb.EditJQL, "Edit tab JQL (Search tab: type a query)"},
 		{"/", "Fuzzy-filter loaded rows"},
 		{"Enter", "Open issue detail"},
 		{h.kb.ForceRefresh, "Refresh current tab"},
@@ -86,12 +86,13 @@ func (h HelpOverlay) View() string {
 	if h.inDetail {
 		detail := []binding{
 			{"Esc", "Back to list (clears history)"},
+			{"ctrl+d / ctrl+u", "Page down / up"},
 			{"⌫  /  ctrl+o", "Navigate back (to the tab and link you left)"},
 			{"ctrl+i", "Navigate forward in history"},
 			{"h l / ← →", "Switch body tab (Description / Comments / Links)"},
 			{"Enter", "Open linked issue (on Links tab)"},
 			{h.kb.OpenBrowser, "Open in browser"},
-			{h.kb.Transition, "Change status (of selected link on Links tab)"},
+			{h.kb.Transition, "Move status (of selected link on Links tab)"},
 			{h.kb.Assign, "Assign issue (selected link on Links tab)"},
 			{h.kb.AddLabels, "Add labels"},
 			{h.kb.AddComment, "Add comment"},
@@ -104,7 +105,7 @@ func (h HelpOverlay) View() string {
 	if !h.inDetail {
 		listExtra := []binding{
 			{h.kb.OpenBrowser, "Open in browser (without entering detail)"},
-			{h.kb.Transition, "Change status"},
+			{h.kb.Transition, "Move status"},
 			{h.kb.Assign, "Assign issue"},
 			{h.kb.Copy, "Copy column values / URL to clipboard"},
 			{h.kb.Sort, "Sort list"},

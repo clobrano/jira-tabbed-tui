@@ -1197,44 +1197,34 @@ func (a App) listHints() []keyHint {
 		}
 	}
 
-	var hints []keyHint
-	if tab.list.SortField() != "" {
+	// Movement first, then enter, then the list tools (filter, sort, edit
+	// JQL). Actions on an issue (change status, assign, copy, open in
+	// browser), refresh and quit are listed under "? all keys".
+	hints := []keyHint{
+		{"j/k", "up/down", 3},
+		{"h/l", "switch tab", 2},
+		{"gg/G", "top/bottom", 7},
+		{"enter", "open", 1},
+	}
+	if tab.list.IsFilterApplied() {
+		hints = append(hints,
+			keyHint{"/", "edit filter", 5},
+			keyHint{"esc", "clear filter", 5},
+		)
+	} else if !tab.isSearch {
+		hints = append(hints, keyHint{"/", "filter", 5})
+	}
+	sort := "sort"
+	if f := tab.list.SortField(); f != "" {
 		dir := "▲"
 		if !tab.list.SortAsc() {
 			dir = "▼"
 		}
-		hints = append(hints, keyHint{"", "sorted by " + tab.list.SortField() + " " + dir, 6})
-	}
-	hints = append(hints,
-		keyHint{"j/k", "next/prev issue", 7},
-		keyHint{"enter", "open issue", 1},
-		keyHint{"h/l", "prev/next tab", 3},
-		keyHint{kb.Transition, "change status", 2},
-		keyHint{kb.Assign, "assign issue", 4},
-		keyHint{kb.OpenBrowser, "open in browser", 5},
-		keyHint{kb.Copy, "copy fields/URL", 9},
-		keyHint{"gg/G", "top/bottom", 14},
-	)
-	switch {
-	case tab.isSearch:
-		hints = append(hints, keyHint{kb.EditJQL, "edit JQL", 8})
-	case tab.list.IsFilterApplied():
-		hints = append(hints,
-			keyHint{"/", "edit filter", 8},
-			keyHint{"esc", "clear filter", 6},
-		)
-	default:
-		hints = append(hints, keyHint{"/", "filter rows", 8})
-	}
-	hints = append(hints, keyHint{kb.Sort, "sort list", 10})
-	if !tab.isSearch {
-		hints = append(hints,
-			keyHint{kb.ForceRefresh, "refresh tab", 11},
-			keyHint{kb.EditJQL, "edit JQL", 12},
-		)
+		sort = "sort (" + f + " " + dir + ")"
 	}
 	return append(hints,
-		keyHint{"q", "quit", 13},
+		keyHint{kb.Sort, sort, 6},
+		keyHint{kb.EditJQL, "edit JQL", 4},
 		keyHint{kb.Help, "all keys", 0},
 	)
 }
@@ -1257,48 +1247,35 @@ func (a App) detailView() string {
 
 // detailHints are the footer hints for the detail view (see listHints).
 func (a App) detailHints() []keyHint {
-	kb := a.cfg.Keybindings
-	var hints []keyHint
+	// Like the list: movement first (including history back/forward), then
+	// enter and esc. Actions on the issue (change status, assign, comment,
+	// labels, copy, open in browser, refresh, fields) are under "? all keys".
+	link, onLink := a.detail.SelectedLink()
+	move := "scroll"
+	if onLink {
+		move = "up/down"
+	}
+	hints := []keyHint{
+		{"j/k", move, 3},
+		{"h/l", "switch section", 2},
+		{"gg/G", "top/bottom", 7},
+	}
 	if a.detailHistIdx > 0 {
-		hints = append(hints, keyHint{"⌫/ctrl+o", "go back", 2})
+		hints = append(hints, keyHint{"⌫/ctrl+o", "back", 4})
 	}
 	if a.detailHistIdx < len(a.detailHistory)-1 {
-		hints = append(hints, keyHint{"ctrl+i", "go forward", 3})
+		hints = append(hints, keyHint{"ctrl+i", "forward", 5})
 	}
-
-	// On a linked Jira issue, status/assign act on the link, so name it.
-	status, assign := "change status", "assign issue"
-	if key := a.detailActionTarget(); key != a.detail.IssueKey() {
-		status, assign = "change "+key+" status", "assign "+key
-	}
-	if link, ok := a.detail.SelectedLink(); ok {
+	if onLink {
 		open := "open " + link.Key
 		if link.URL != "" {
-			open = "open link in browser"
+			open = "open in browser"
 		}
-		hints = append(hints,
-			keyHint{"j/k", "next/prev link", 7},
-			keyHint{"enter", open, 1},
-		)
-	} else {
-		hints = append(hints,
-			keyHint{"j/k", "scroll", 7},
-			keyHint{"ctrl+d/u", "page down/up", 12},
-		)
+		hints = append(hints, keyHint{"enter", open, 1})
 	}
 	return append(hints,
-		keyHint{"h/l", "prev/next section", 4},
-		keyHint{kb.Transition, status, 1},
-		keyHint{kb.Assign, assign, 5},
-		keyHint{kb.AddComment, "add comment", 9},
-		keyHint{kb.AddLabels, "add labels", 10},
-		keyHint{kb.Copy, "copy fields/URL", 8},
-		keyHint{kb.OpenBrowser, "open in browser", 6},
-		keyHint{kb.ForceRefresh, "refresh issue", 12},
-		keyHint{kb.FieldDiscover, "list fields", 13},
-		keyHint{"gg/G", "top/bottom", 14},
-		keyHint{"esc", "back to list", 11},
-		keyHint{kb.Help, "all keys", 0},
+		keyHint{"esc", "list", 6},
+		keyHint{a.cfg.Keybindings.Help, "all keys", 0},
 	)
 }
 
