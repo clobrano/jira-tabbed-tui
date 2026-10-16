@@ -116,6 +116,9 @@ func (l IssueList) SetSize(w, h int) IssueList {
 }
 
 func (l IssueList) SetIssues(issues []model.Issue, total int, stale bool, err error) IssueList {
+	// The cursor stays on the same issue (and on the same screen row) when it
+	// is still in the new list, e.g. after a refresh.
+	selected, hadSelection := l.SelectedIssue()
 	l.total = total
 	l.stale = stale
 	l.err = err
@@ -131,6 +134,15 @@ func (l IssueList) SetIssues(issues []model.Issue, total int, stale bool, err er
 		l.issues = applyFuzzyFilter(l.filterQuery, l.allIssues)
 	} else {
 		l.issues = l.allIssues
+	}
+	if hadSelection {
+		for i, iss := range l.issues {
+			if iss.Key == selected.Key {
+				l.offset += i - l.cursor
+				l.cursor = i
+				break
+			}
+		}
 	}
 	if l.cursor >= len(l.issues) && len(l.issues) > 0 {
 		l.cursor = len(l.issues) - 1

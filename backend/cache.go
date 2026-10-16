@@ -91,6 +91,7 @@ type Cache struct {
 	ttl    time.Duration
 	tabs   map[string]*tabCacheEntry
 	issues map[string]*issueCacheEntry
+	now    func() time.Time
 }
 
 // NewCache creates a cache with the default 5-minute TTL.
@@ -104,8 +105,15 @@ func NewCacheWithTTL(ttl time.Duration) *Cache {
 		ttl:    ttl,
 		tabs:   make(map[string]*tabCacheEntry),
 		issues: make(map[string]*issueCacheEntry),
+		now:    time.Now,
 	}
 }
+
+// SetClock replaces the cache's clock. Useful in tests.
+func (c *Cache) SetClock(now func() time.Time) { c.now = now }
+
+// TTL is how long cached data counts as fresh.
+func (c *Cache) TTL() time.Duration { return c.ttl }
 
 // FetchListCmd returns the tab's cached list if fresh (including a load
 // still in progress, which the caller resumes from Next), otherwise fetches
@@ -116,7 +124,7 @@ func (c *Cache) FetchListCmd(fetch PageFunc, tabIdx, gen int, tabName, jql strin
 		entry, cached := c.tabs[tabName]
 		c.mu.Unlock()
 
-		if cached && time.Since(entry.fetchedAt) < c.ttl {
+		if cached && c.now().Sub(entry.fetchedAt) < c.ttl {
 			return entry.msg(tabIdx, gen)
 		}
 
@@ -147,7 +155,7 @@ func (c *Cache) doFetch(fetch PageFunc, tabIdx, gen int, tabName, jql string) te
 
 	entry := &tabCacheEntry{
 		issues: page.Issues, total: page.Total, next: page.Next,
-		truncated: page.Truncated, fetchedAt: time.Now(),
+		truncated: page.Truncated, fetchedAt: c.now(),
 	}
 	if entry.next == "" {
 		entry.total = len(entry.issues)
@@ -201,7 +209,7 @@ func (c *Cache) FetchDetailCmd(r Runner, key string) tea.Cmd {
 		entry, cached := c.issues[key]
 		c.mu.Unlock()
 
-		if cached && time.Since(entry.fetchedAt) < c.ttl {
+		if cached && c.now().Sub(entry.fetchedAt) < c.ttl {
 			return DetailFetchedMsg{Issue: entry.detail}
 		}
 
@@ -211,7 +219,7 @@ func (c *Cache) FetchDetailCmd(r Runner, key string) tea.Cmd {
 		}
 
 		c.mu.Lock()
-		c.issues[key] = &issueCacheEntry{detail: detail, fetchedAt: time.Now()}
+		c.issues[key] = &issueCacheEntry{detail: detail, fetchedAt: c.now()}
 		c.mu.Unlock()
 
 		return DetailFetchedMsg{Issue: detail}

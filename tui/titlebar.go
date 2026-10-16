@@ -78,7 +78,7 @@ func (a App) titleBar() string {
 		segs = append(segs, titleSeg{text: a.user, style: titleMutedStyle, drop: 25, sep: true})
 	}
 
-	var right string
+	var rights []string
 	if a.activeTab < len(a.tabs) {
 		tab := a.tabs[a.activeTab]
 		issues := tab.list.allIssues
@@ -119,24 +119,58 @@ func (a App) titleBar() string {
 			}
 		}
 
-		switch {
-		case tab.list.loading:
-			right = titleDimStyle.Render("loading… ")
-		case tab.refreshFailed && !tab.fetchedAt.IsZero():
-			right = titleWarnStyle.Render("refresh failed · data from " + ago(a.now().Sub(tab.fetchedAt)) + " ago ")
-		case tab.refreshFailed:
-			right = titleWarnStyle.Render("refresh failed ")
-		case !tab.fetchedAt.IsZero():
-			right = titleDimStyle.Render("updated " + ago(a.now().Sub(tab.fetchedAt)) + " ago ")
-		}
+		rights = a.freshness(tab)
 	}
 
-	return fitTitle(segs, right, a.width)
+	return fitTitle(segs, rights, a.width)
 }
 
-// fitTitle drops segments until the left side fits beside right, then pads
-// so right sits at the end of the line.
-func fitTitle(segs []titleSeg, right string, width int) string {
+// freshness describes how current the tab's list is, longest first; the
+// title bar shows the longest that fits, e.g.
+//
+//	updated 2m ago · auto-refresh in 3m · r refresh
+func (a App) freshness(tab tabState) []string {
+	key := a.cfg.Keybindings.ForceRefresh
+	switch {
+	case tab.list.loading:
+		return []string{titleDimStyle.Render("loading… ")}
+	case tab.refreshing && tab.refreshTotal > 0:
+		return []string{
+			titleDimStyle.Render(fmt.Sprintf("refreshing %d of %d… ", tab.refreshLoaded, tab.refreshTotal)),
+			titleDimStyle.Render("refreshing… "),
+		}
+	case tab.refreshing:
+		return []string{titleDimStyle.Render("refreshing… ")}
+	case tab.refreshFailed && !tab.fetchedAt.IsZero():
+		data := "data from " + ago(a.now().Sub(tab.fetchedAt)) + " ago"
+		return []string{
+			titleWarnStyle.Render("refresh failed · " + data + " · " + key + " retry "),
+			titleWarnStyle.Render("refresh failed · " + data + " "),
+			titleWarnStyle.Render("refresh failed "),
+		}
+	case tab.refreshFailed:
+		return []string{titleWarnStyle.Render("refresh failed · " + key + " retry "), titleWarnStyle.Render("refresh failed ")}
+	case !tab.fetchedAt.IsZero():
+		updated := "updated " + ago(a.now().Sub(tab.fetchedAt)) + " ago"
+		auto := "auto-refresh soon"
+		if left := a.cache.TTL() - a.now().Sub(tab.fetchedAt); left >= time.Minute {
+			auto = "auto-refresh in " + ago(left.Round(time.Minute))
+		} else if left > 0 {
+			auto = "auto-refresh in <1m"
+		}
+		return []string{
+			titleDimStyle.Render(updated + " · " + auto + " · " + key + " refresh "),
+			titleDimStyle.Render(updated + " · " + key + " refresh "),
+			titleDimStyle.Render(updated + " "),
+		}
+	}
+	return nil
+}
+
+// fitTitle drops segments until the left side fits beside the right one,
+// then pads so it sits at the end of the line. rights are alternatives,
+// longest first: a shorter one is used rather than drop the issue count.
+func fitTitle(segs []titleSeg, rights []string, width int) string {
 	render := func(segs []titleSeg) string {
 		var sb strings.Builder
 		for _, s := range segs {
@@ -147,29 +181,45 @@ func fitTitle(segs []titleSeg, right string, width int) string {
 		}
 		return sb.String()
 	}
-	rw := lipgloss.Width(right)
-	left := render(segs)
-	for lipgloss.Width(left)+rw+1 > width {
-		worst := -1
-		for i, s := range segs {
-			if s.drop > 0 && (worst < 0 || s.drop > segs[worst].drop) {
-				worst = i
+	fit := func(right string) (string, bool) {
+		segs := segs
+		rw := lipgloss.Width(right)
+		left := render(segs)
+		for lipgloss.Width(left)+rw+1 > width {
+			worst := -1
+			for i, s := range segs {
+				if s.drop > 0 && (worst < 0 || s.drop > segs[worst].drop) {
+					worst = i
+				}
 			}
+			if worst < 0 || segs[worst].drop <= 1 {
+				return "", false
+			}
+			segs = append(segs[:worst:worst], segs[worst+1:]...)
+			left = render(segs)
 		}
-		if worst < 0 {
-			break
+		return left + strings.Repeat(" ", max(width-lipgloss.Width(left)-rw, 0)) + right, true
+	}
+	for _, right := range rights {
+		if line, ok := fit(right); ok {
+			return line
 		}
-		segs = append(segs[:worst:worst], segs[worst+1:]...)
-		left = render(segs)
 	}
-	if lipgloss.Width(left)+rw+1 > width {
-		right, rw = "", 0
+	if line, ok := fit(""); ok {
+		return line
 	}
+	// Too narrow even for the issue count: only what never drops, cut to width.
+	var keep []titleSeg
+	for _, s := range segs {
+		if s.drop == 0 {
+			keep = append(keep, s)
+		}
+	}
+	left := render(keep)
 	if lipgloss.Width(left) > width {
 		left = lipgloss.NewStyle().MaxWidth(width).Render(left)
 	}
-	gap := max(width-lipgloss.Width(left)-rw, 0)
-	return left + strings.Repeat(" ", gap) + right
+	return left + strings.Repeat(" ", max(width-lipgloss.Width(left), 0))
 }
 
 // ago renders a duration as "12s", "4m", "3h" or "2d".

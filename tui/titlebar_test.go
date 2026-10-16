@@ -33,7 +33,7 @@ func TestTitleBarWide(t *testing.T) {
 	if !strings.HasPrefix(got, want) {
 		t.Errorf("left side:\n got %q\nwant %q", got, want)
 	}
-	if !strings.HasSuffix(got, "updated 1m ago ") {
+	if !strings.HasSuffix(got, "updated 1m ago · auto-refresh in 4m · r refresh ") {
 		t.Errorf("right side: %q", got)
 	}
 	if w := lipgloss.Width(got); w != 200 {
@@ -71,7 +71,7 @@ func TestTitleBarRefreshFailed(t *testing.T) {
 		TabIdx: 1, Gen: a.tabs[1].loadGen, Issues: a.tabs[1].list.allIssues, Total: 4,
 		Err: errors.New("boom"), Stale: true, At: a.now().Add(-6 * time.Minute),
 	})
-	if got := stripANSI(a.titleBar()); !strings.HasSuffix(got, "refresh failed · data from 6m ago ") {
+	if got := stripANSI(a.titleBar()); !strings.HasSuffix(got, "refresh failed · data from 6m ago · r retry ") {
 		t.Errorf("stale title bar: %q", got)
 	}
 }
