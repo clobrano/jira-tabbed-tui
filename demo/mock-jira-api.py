@@ -7,6 +7,11 @@ transitions (the status picker) and its remote/web links. This tiny server
 answers those calls with canned data so the demo GIF can be recorded with no
 live Jira instance. demo/config.yaml points backend.url at it.
 
+Issue lists (the tabs) come from the search API too: /rest/api/3/search/jql
+and /rest/api/3/search/approximate-count are answered with the same canned
+lists the mock jira CLI prints (demo/bin/jira issue list), so both stay in
+sync.
+
 It also answers GitHub's pull request API under /github, so the PR links show
 their state; the tape sets GITHUB_API_URL to that prefix.
 
@@ -20,8 +25,10 @@ It is NOT a real Jira server. Usage: mock-jira-api.py [PORT]   (default 8642)
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
+from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8642
@@ -76,8 +83,33 @@ def status_of(key):
     return status
 
 
+MOCK_JIRA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", "jira")
+
+
+def search(jql):
+    """The issues the mock jira CLI lists for jql."""
+    out = subprocess.run([MOCK_JIRA, "issue", "list", "--raw", "-q", jql],
+                         capture_output=True, text=True, check=False).stdout
+    try:
+        data = json.loads(out)
+    except ValueError:
+        return []
+    return data["issues"] if isinstance(data, dict) else data
+
+
 class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if urlparse(self.path).path == "/rest/api/3/search/approximate-count":
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length) or b"{}")
+            return self.reply({"count": len(search(body.get("jql", "")))})
+        self.send_error(404)
+
     def do_GET(self):
+        url = urlparse(self.path)
+        if url.path == "/rest/api/3/search/jql":
+            jql = parse_qs(url.query).get("jql", [""])[0]
+            return self.reply({"issues": search(jql), "isLast": True})
         pr = re.match(r"^/github/repos/[^/]+/[^/]+/pulls/(\d+)$", self.path)
         if pr:
             if pr.group(1) not in PULLS:

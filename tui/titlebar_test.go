@@ -23,7 +23,7 @@ func titleTestApp(t *testing.T, width int) App {
 		{Key: "P-1", Status: "In Progress"}, {Key: "P-2", Status: "In Progress"},
 		{Key: "P-3", Status: "To Do"}, {Key: "P-4", Status: "In Review"},
 	}
-	return send(t, a, backend.ListFetchedMsg{TabIdx: 1, Issues: issues, Total: 4, At: now.Add(-90 * time.Second)})
+	return send(t, a, backend.ListFetchedMsg{TabIdx: 1, Gen: a.tabs[1].loadGen, Issues: issues, Total: 4, At: now.Add(-90 * time.Second)})
 }
 
 func TestTitleBarWide(t *testing.T) {
@@ -33,7 +33,7 @@ func TestTitleBarWide(t *testing.T) {
 	if !strings.HasPrefix(got, want) {
 		t.Errorf("left side:\n got %q\nwant %q", got, want)
 	}
-	if !strings.HasSuffix(got, "updated 1m ago ") {
+	if !strings.HasSuffix(got, "updated 1m ago · auto-refresh in 29m · r refresh ") {
 		t.Errorf("right side: %q", got)
 	}
 	if w := lipgloss.Width(got); w != 200 {
@@ -68,10 +68,10 @@ func TestTitleBarGivesWayOnNarrowScreens(t *testing.T) {
 func TestTitleBarRefreshFailed(t *testing.T) {
 	a := titleTestApp(t, 200)
 	a = send(t, a, backend.ListFetchedMsg{
-		TabIdx: 1, Issues: a.tabs[1].list.allIssues, Total: 4,
+		TabIdx: 1, Gen: a.tabs[1].loadGen, Issues: a.tabs[1].list.allIssues, Total: 4,
 		Err: errors.New("boom"), Stale: true, At: a.now().Add(-6 * time.Minute),
 	})
-	if got := stripANSI(a.titleBar()); !strings.HasSuffix(got, "refresh failed · data from 6m ago ") {
+	if got := stripANSI(a.titleBar()); !strings.HasSuffix(got, "refresh failed · data from 6m ago · r retry ") {
 		t.Errorf("stale title bar: %q", got)
 	}
 }

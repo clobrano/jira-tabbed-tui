@@ -112,7 +112,7 @@ func TestChildrenAlreadyListedAsSubtasksAreNotDuplicated(t *testing.T) {
 func TestRefetchKeepsSuccessMessageButClearsErrors(t *testing.T) {
 	a := newTestApp(t)
 	a.statusLine = a.statusLine.SetMessage("transition succeeded", false)
-	a = send(t, a, fetched("P-1"), backend.ListFetchedMsg{TabIdx: 1})
+	a = send(t, a, fetched("P-1"), backend.ListFetchedMsg{TabIdx: 1, Gen: a.tabs[1].loadGen})
 	if a.statusLine.message != "transition succeeded" {
 		t.Errorf("success message cleared by refetch: %q", a.statusLine.message)
 	}

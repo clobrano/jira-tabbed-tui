@@ -49,10 +49,22 @@ type tabState struct {
 	name   string
 	jql    string
 	list   IssueList
+	// loadGen identifies this tab's current load (unique across tabs, see
+	// App.loadSeq); pages of a superseded load (after a refresh, a JQL
+	// change or a tab removal) are ignored.
+	loadGen int
 	// fetchedAt is when the shown issues came from Jira; refreshFailed marks
 	// a failed refresh that left older (or no) data on screen.
 	fetchedAt     time.Time
 	refreshFailed bool
+	// refreshing marks a background refresh: the rows on screen stay until
+	// the new list is complete (refreshLoaded of refreshTotal so far).
+	refreshing    bool
+	refreshLoaded int
+	refreshTotal  int
+	// triedAt is when the last load or refresh started, so a failing one is
+	// not retried on every auto-refresh tick.
+	triedAt time.Time
 	// Search tab only
 	search   SearchInput
 	isSearch bool
@@ -82,6 +94,7 @@ type App struct {
 	runner       backend.Runner
 	cache        *backend.Cache
 	tabs         []tabState
+	loadSeq      int // last tabState.loadGen handed out
 	activeTab    int
 	view         viewMode
 	overlay      overlayMode
@@ -118,6 +131,7 @@ type App struct {
 	user          string           // signed-in Jira user, shown in the title bar
 	server        string           // Jira host, shown in the title bar
 	now           func() time.Time // clock, swappable in tests
+	pages         backend.PageFunc // list page source override, for tests
 }
 
 // New creates the root App model.
@@ -166,6 +180,8 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 	if len(tabs) > 1 {
 		initialTab = 1
 		tabs[1].list = tabs[1].list.SetLoading(true)
+		tabs[1].loadGen = 1 // Init's load
+		tabs[1].triedAt = time.Now()
 	} else {
 		// Only the Search tab exists; focus the JQL input immediately.
 		tabs[0].search = tabs[0].search.Focus()
@@ -177,6 +193,7 @@ func New(cfg config.Config, configPath string, runner backend.Runner) App {
 		runner:        runner,
 		cache:         cache,
 		tabs:          tabs,
+		loadSeq:       1,
 		activeTab:     initialTab,
 		view:          viewList,
 		overlay:       overlayNone,
@@ -201,10 +218,10 @@ func (a App) WithUser(user string) App {
 
 // Init starts the spinner and triggers the initial fetch for the first non-search tab.
 func (a App) Init() tea.Cmd {
-	cmds := []tea.Cmd{a.globalSpinner.Tick}
+	cmds := []tea.Cmd{a.globalSpinner.Tick, autoRefreshTick()}
 	if a.activeTab > 0 && a.activeTab < len(a.tabs) {
 		t := a.tabs[a.activeTab]
-		cmds = append(cmds, a.cache.FetchListCmd(a.runner, a.activeTab, t.name, t.jql))
+		cmds = append(cmds, a.cache.FetchListCmd(a.pageSource(a.activeTab), a.activeTab, t.loadGen, a.cacheName(a.activeTab), t.jql))
 	}
 	return tea.Batch(cmds...)
 }
@@ -229,20 +246,56 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.detail, _ = a.detail.SpinnerTick()
 		return a, cmd
 
+	// ── auto-refresh tick ────────────────────────────────────────────────────
+	case autoRefreshMsg:
+		// Refresh the visible tab once its data is older than the cache TTL.
+		// The tick also keeps the title bar's "updated … ago" current.
+		if i := a.activeTab; i < len(a.tabs) && a.tabStale(i) {
+			var cmd tea.Cmd
+			a, cmd = a.refreshTab(i)
+			return a, tea.Batch(cmd, autoRefreshTick())
+		}
+		return a, autoRefreshTick()
+
 	// ── list fetched ─────────────────────────────────────────────────────────
 	case backend.ListFetchedMsg:
-		if msg.TabIdx >= 0 && msg.TabIdx < len(a.tabs) {
-			tab := &a.tabs[msg.TabIdx]
-			tab.list = tab.list.SetIssues(msg.Issues, msg.Total, msg.Stale, msg.Err)
-			tab.refreshFailed = msg.Err != nil
-			if msg.Err == nil || msg.Stale {
-				tab.fetchedAt = msg.At
+		if msg.TabIdx < 0 || msg.TabIdx >= len(a.tabs) || msg.Gen != a.tabs[msg.TabIdx].loadGen {
+			return a, nil // a page of a superseded load
+		}
+		tab := &a.tabs[msg.TabIdx]
+		// Keep loading in the background until everything (or the cap) is in.
+		more := msg.Next != "" && msg.Err == nil
+		capped := more && len(msg.Issues) >= a.cfg.List.MaxIssues
+		if tab.refreshing {
+			// A background refresh: keep the old rows until the new list is
+			// complete, then swap it in at once.
+			if msg.Err != nil {
+				tab.refreshing = false
+				tab.refreshFailed = true
+				a.statusLine = a.statusLine.SetMessage("refresh failed: "+MapCLIError(msg.Err.Error()), true)
+				return a, nil
 			}
+			if more && !capped {
+				tab.refreshLoaded, tab.refreshTotal = len(msg.Issues), msg.Total
+				return a, a.cache.FetchNextPageCmd(a.pageSource(msg.TabIdx), msg.TabIdx, msg.Gen,
+					a.cacheName(msg.TabIdx), tab.jql, msg.Next)
+			}
+			tab.refreshing = false
+		}
+		tab.list = tab.list.SetIssues(msg.Issues, msg.Total, msg.Stale, msg.Err).
+			SetPaging(more && !capped, capped, msg.Truncated)
+		tab.refreshFailed = (msg.Err != nil && len(msg.Issues) == 0) || msg.Stale
+		if msg.Err == nil || msg.Stale {
+			tab.fetchedAt = msg.At
 		}
 		if msg.Err != nil {
 			a.statusLine = a.statusLine.SetMessage(MapCLIError(msg.Err.Error()), true)
 		} else {
 			a.statusLine = a.statusLine.ClearError()
+		}
+		if more && !capped {
+			return a, a.cache.FetchNextPageCmd(a.pageSource(msg.TabIdx), msg.TabIdx, msg.Gen,
+				a.cacheName(msg.TabIdx), tab.jql, msg.Next)
 		}
 		return a, nil
 
@@ -367,8 +420,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, a.cache.FetchDetailCmd(a.runner, detailKey))
 		for i, t := range a.tabs {
 			if t.name == msg.TabName {
-				a.tabs[i].list = a.tabs[i].list.SetLoading(true)
-				cmds = append(cmds, a.cache.ForceFetchListCmd(a.runner, i, t.name, t.jql))
+				var cmd tea.Cmd
+				a, cmd = a.refreshTab(i)
+				cmds = append(cmds, cmd)
 				break
 			}
 		}
@@ -376,10 +430,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── search run ───────────────────────────────────────────────────────────
 	case SearchRunMsg:
-		tab := &a.tabs[0]
-		tab.jql = msg.Query
-		tab.list = tab.list.SetLoading(true)
-		return a, a.cache.ForceFetchListCmd(a.runner, 0, "Search:"+msg.Query, msg.Query)
+		a.tabs[0].jql = msg.Query
+		return a.loadTab(0, true)
 
 	// ── back to list ─────────────────────────────────────────────────────────
 	case BackToListMsg:
@@ -539,10 +591,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case actions.EditJQLSubmittedMsg:
 		a.overlay = overlayNone
-		tab := &a.tabs[a.activeTab]
-		tab.jql = msg.JQL
-		tab.list = tab.list.SetLoading(true)
-		return a, a.cache.ForceFetchListCmd(a.runner, a.activeTab, tab.name, msg.JQL)
+		a.tabs[a.activeTab].jql = msg.JQL
+		return a.loadTab(a.activeTab, true)
 
 	case actions.EditJQLCancelledMsg:
 		a.overlay = overlayNone
@@ -709,11 +759,6 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "j", "down":
-		if tab.list.AtBottom() && tab.list.HasMore() && !tab.list.loadingMore {
-			tab.list = tab.list.SetLoadingMore(true)
-			return a, a.cache.FetchListPageCmd(
-				a.runner, a.activeTab, tab.name, tab.jql, tab.list.LoadedCount())
-		}
 		tab.list = tab.list.MoveDown()
 
 	case "k", "up":
@@ -740,8 +785,7 @@ func (a App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.switchTab(-1)
 
 	case a.cfg.Keybindings.ForceRefresh:
-		tab.list = tab.list.SetLoading(true)
-		return a, a.cache.ForceFetchListCmd(a.runner, a.activeTab, tab.name, tab.jql)
+		return a.refreshTab(a.activeTab)
 
 	case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		n := int(msg.String()[0] - '0')
@@ -1565,8 +1609,27 @@ func (a App) switchToTab(idx int) (tea.Model, tea.Cmd) {
 		// working; the edit-JQL key (e) focuses it, as on any other tab.
 		return a, nil
 	}
-	a.tabs[idx].list = tab.list.SetLoading(true)
-	return a, a.cache.ForceFetchListCmd(a.runner, idx, tab.name, tab.jql)
+	return a.showTab(idx)
+}
+
+// showTab brings tab i's list up to date on arrival: a tab never loaded
+// loads (from the cache when fresh), a stale one refreshes in the
+// background, and a fresh one or one already loading is left alone.
+func (a App) showTab(i int) (App, tea.Cmd) {
+	t := a.tabs[i]
+	switch {
+	case t.isSearch && t.jql == "":
+		return a, nil
+	case t.fetchedAt.IsZero() && t.triedAt.IsZero(): // never loaded
+		return a.loadTab(i, false)
+	case a.tabBusy(i):
+		return a, nil
+	case t.fetchedAt.IsZero() && len(t.list.allIssues) == 0: // a failed first load
+		return a.loadTab(i, false)
+	case t.fetchedAt.IsZero(), a.tabStale(i):
+		return a.refreshTab(i)
+	}
+	return a, nil
 }
 
 // pushHistory records a new navigation target, truncating any forward history.
@@ -1648,6 +1711,95 @@ func (a App) boundToAction(key string) bool {
 	return false
 }
 
+// loadTab starts a fresh load of tab i (from the cache when force is false
+// and the cached list is fresh). Earlier loads of the tab are superseded.
+// loadTab loads tab i from scratch, with the spinner up until the first page
+// arrives: for a new tab or new JQL. force skips the cache.
+func (a App) loadTab(i int, force bool) (App, tea.Cmd) {
+	t := &a.tabs[i]
+	a.loadSeq++
+	t.loadGen = a.loadSeq
+	t.refreshing = false
+	t.triedAt = a.now()
+	t.list = t.list.SetLoading(true)
+	fetch := a.cache.ForceFetchListCmd
+	if !force {
+		fetch = a.cache.FetchListCmd
+	}
+	return a, fetch(a.pageSource(i), i, t.loadGen, a.cacheName(i), t.jql)
+}
+
+// refreshTab reloads tab i from Jira in the background, keeping its rows on
+// screen until the new list is complete. A tab with nothing shown yet loads
+// normally.
+func (a App) refreshTab(i int) (App, tea.Cmd) {
+	t := &a.tabs[i]
+	if len(t.list.allIssues) == 0 || t.list.loading {
+		return a.loadTab(i, true)
+	}
+	a.loadSeq++
+	t.loadGen = a.loadSeq
+	t.refreshing = true
+	t.refreshLoaded, t.refreshTotal = 0, 0
+	t.triedAt = a.now()
+	t.list = t.list.SetPaging(false, t.list.capped, t.list.truncated) // a superseded load stops
+	return a, a.cache.ForceFetchListCmd(a.pageSource(i), i, t.loadGen, a.cacheName(i), t.jql)
+}
+
+// tabBusy reports whether tab i has a load or refresh running.
+func (a App) tabBusy(i int) bool {
+	t := a.tabs[i]
+	return t.refreshing || t.list.loading || t.list.loadingMore
+}
+
+// tabStale reports whether tab i is due an automatic refresh: its data (or
+// its last attempt, if that failed) is older than the cache TTL.
+func (a App) tabStale(i int) bool {
+	t := a.tabs[i]
+	if a.tabBusy(i) || (t.fetchedAt.IsZero() && t.triedAt.IsZero()) || (t.isSearch && t.jql == "") {
+		return false
+	}
+	last := t.fetchedAt
+	if t.triedAt.After(last) {
+		last = t.triedAt
+	}
+	return a.now().Sub(last) >= a.cache.ListTTL()
+}
+
+// autoRefreshEvery is how often the visible tab is checked for staleness.
+const autoRefreshEvery = 10 * time.Second
+
+type autoRefreshMsg struct{}
+
+func autoRefreshTick() tea.Cmd {
+	return tea.Tick(autoRefreshEvery, func(time.Time) tea.Msg { return autoRefreshMsg{} })
+}
+
+// cacheName is the key tab i's list is cached under.
+func (a App) cacheName(i int) string {
+	if t := a.tabs[i]; t.isSearch {
+		return "Search:" + t.jql
+	}
+	return a.tabs[i].name
+}
+
+// pageSource fetches pages of tab i's list, asking only for the fields its
+// rows and columns use.
+func (a App) pageSource(i int) backend.PageFunc {
+	if a.pages != nil {
+		return a.pages
+	}
+	fields := append([]string(nil), backend.ListFields...)
+	for _, c := range a.tabs[i].list.Columns() {
+		switch c.Field {
+		case "key", "type", "summary", "priority", "status", "assignee", "duedate", "created", "updated":
+		default:
+			fields = append(fields, c.Field)
+		}
+	}
+	return backend.SearchPages(a.runner, a.cfg.Backend.URL, fields)
+}
+
 // detailActionTarget returns the issue key that move/assign should act on in
 // the detail view: the highlighted linked Jira issue on the Links tab, or the
 // displayed issue otherwise.
@@ -1693,7 +1845,7 @@ func (a App) applyAddTab(msg actions.AddTabSubmittedMsg) (tea.Model, tea.Cmd) {
 
 	newIdx := len(a.tabs) - 1
 	a.activeTab = newIdx
-	return a, a.cache.ForceFetchListCmd(a.runner, newIdx, msg.Name, msg.JQL)
+	return a.loadTab(newIdx, true)
 }
 
 // applyDeleteTab removes a tab, saves config, and switches to an adjacent tab.
@@ -1705,8 +1857,18 @@ func (a App) applyDeleteTab(idx int) (tea.Model, tea.Cmd) {
 
 	tabName := a.tabs[idx].name
 
-	// Remove from runtime state.
+	// Remove from runtime state. Loads running for the tabs that shift left
+	// deliver to their old index, so they are dropped and those tabs load
+	// again when shown.
 	a.tabs = append(a.tabs[:idx], a.tabs[idx+1:]...)
+	for i := idx; i < len(a.tabs); i++ {
+		if t := &a.tabs[i]; a.tabBusy(i) {
+			t.loadGen = -1
+			t.refreshing = false
+			t.fetchedAt, t.triedAt = time.Time{}, time.Time{}
+			t.list = t.list.SetLoading(false).SetPaging(false, t.list.capped, t.list.truncated)
+		}
+	}
 
 	// Remove from config (config index = runtime index - 1, since tab 0 is Search).
 	cfgIdx := idx - 1
@@ -1737,13 +1899,7 @@ func (a App) applyDeleteTab(idx int) (tea.Model, tea.Cmd) {
 		a.activeTab = 0
 	}
 
-	// Fetch the newly active tab if it's not Search.
-	if !a.tabs[a.activeTab].isSearch {
-		t := a.tabs[a.activeTab]
-		a.tabs[a.activeTab].list = t.list.SetLoading(true)
-		return a, a.cache.ForceFetchListCmd(a.runner, a.activeTab, t.name, t.jql)
-	}
-	return a, nil
+	return a.showTab(a.activeTab)
 }
 
 type sortableField struct {

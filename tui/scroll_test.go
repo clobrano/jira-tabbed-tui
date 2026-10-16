@@ -21,7 +21,7 @@ func longListApp(t *testing.T, n, total int) App {
 	for i := range issues {
 		issues[i] = model.Issue{Key: fmt.Sprintf("P-%d", i+1), Summary: "s", Status: "To Do"}
 	}
-	return send(t, a, backend.ListFetchedMsg{TabIdx: 1, Issues: issues, Total: total})
+	return send(t, a, backend.ListFetchedMsg{TabIdx: 1, Gen: a.tabs[1].loadGen, Issues: issues, Total: total})
 }
 
 func selectedKey(a App) string {
@@ -60,7 +60,7 @@ func TestPositionLineCountsRowsOutOfView(t *testing.T) {
 	l := a.tabs[1].list
 	vis := l.visibleRows()
 
-	if got := l.positionLine(); got != fmt.Sprintf("row 1 of 50 · ↓ %d below · 70 more in Jira (j at the bottom loads them)", 50-vis) {
+	if got := l.positionLine(); got != fmt.Sprintf("row 1 of 50 · ↓ %d below", 50-vis) {
 		t.Errorf("top: %q", got)
 	}
 
@@ -82,7 +82,7 @@ func TestPositionLineCountsRowsOutOfView(t *testing.T) {
 	}
 
 	a = send(t, a, keyMsg("G"))
-	if got := a.tabs[1].list.positionLine(); got != fmt.Sprintf("row 50 of 50 · ↑ %d above · 70 more in Jira (j at the bottom loads them)", 50-vis) {
+	if got := a.tabs[1].list.positionLine(); got != fmt.Sprintf("row 50 of 50 · ↑ %d above", 50-vis) {
 		t.Errorf("bottom: %q", got)
 	}
 	if !strings.Contains(stripANSI(a.View()), "row 50 of 50") {

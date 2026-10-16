@@ -25,20 +25,6 @@ func FetchIssueList(r Runner, jql string, maxResults int) ([]model.Issue, int, e
 	return parseIssueList(data)
 }
 
-// FetchIssueListPage fetches a page of issues starting at startAt.
-func FetchIssueListPage(r Runner, jql string, maxResults, startAt int) ([]model.Issue, int, error) {
-	args := []string{"issue", "list", "--raw", "-q", jql,
-		"--paginate", fmt.Sprintf("%d:%d", startAt, maxResults)}
-	data, err := r.Run(args...)
-	if err != nil {
-		if isEmptyResultsError(err) {
-			return nil, 0, nil
-		}
-		return nil, 0, err
-	}
-	return parseIssueList(data)
-}
-
 // isEmptyResultsError returns true when the jira CLI exits non-zero solely
 // because the query matched zero issues (not a real error).
 func isEmptyResultsError(err error) bool {
@@ -149,6 +135,12 @@ func parseIssueList(data []byte) ([]model.Issue, int, error) {
 		rawIssues = resp.Issues
 		total = resp.Total
 	}
+	return convertIssues(rawIssues), total, nil
+}
+
+// convertIssues turns raw Jira issues (from jira-cli or the REST API) into
+// list rows; issues whose fields can't be parsed are skipped.
+func convertIssues(rawIssues []rawIssue) []model.Issue {
 	issues := make([]model.Issue, 0, len(rawIssues))
 	for _, raw := range rawIssues {
 		var f rawIssueFields
@@ -173,7 +165,7 @@ func parseIssueList(data []byte) ([]model.Issue, int, error) {
 		iss.Updated = formatDate(f.Updated)
 		issues = append(issues, iss)
 	}
-	return issues, total, nil
+	return issues
 }
 
 // FetchIssueDetail fetches full detail for one issue.
