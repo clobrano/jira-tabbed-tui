@@ -9,7 +9,12 @@ import (
 	"github.com/clobrano/jira-tabbed-tui/model"
 )
 
-const defaultTTL = 5 * time.Minute
+// defaultTTL is how long an issue's details stay cached; lists, whose age
+// is shown in the title bar along with how to refresh them, last longer.
+const (
+	defaultTTL     = 5 * time.Minute
+	defaultListTTL = 30 * time.Minute
+)
 
 // ListFetchedMsg is sent when a page of a tab's list arrives. Issues holds
 // everything loaded so far; while Next is set, more pages remain.
@@ -59,10 +64,10 @@ type AssignSearchDoneMsg struct {
 
 // WriteActionDoneMsg is sent after any write action (transition, labels, comment).
 type WriteActionDoneMsg struct {
-	Action  string
+	Action   string
 	IssueKey string
 	TabName  string
-	Err     error
+	Err      error
 }
 
 type tabCacheEntry struct {
@@ -87,33 +92,39 @@ type issueCacheEntry struct {
 
 // Cache holds per-tab and per-issue cached data with a TTL.
 type Cache struct {
-	mu     sync.Mutex
-	ttl    time.Duration
-	tabs   map[string]*tabCacheEntry
-	issues map[string]*issueCacheEntry
-	now    func() time.Time
+	mu      sync.Mutex
+	ttl     time.Duration // issue details
+	listTTL time.Duration
+	tabs    map[string]*tabCacheEntry
+	issues  map[string]*issueCacheEntry
+	now     func() time.Time
 }
 
-// NewCache creates a cache with the default 5-minute TTL.
+// NewCache creates a cache that keeps lists for 30 minutes and issue
+// details for 5.
 func NewCache() *Cache {
-	return NewCacheWithTTL(defaultTTL)
+	c := NewCacheWithTTL(defaultTTL)
+	c.listTTL = defaultListTTL
+	return c
 }
 
-// NewCacheWithTTL creates a cache with a custom TTL. Useful in tests.
+// NewCacheWithTTL creates a cache with one custom TTL for lists and issue
+// details. Useful in tests.
 func NewCacheWithTTL(ttl time.Duration) *Cache {
 	return &Cache{
-		ttl:    ttl,
-		tabs:   make(map[string]*tabCacheEntry),
-		issues: make(map[string]*issueCacheEntry),
-		now:    time.Now,
+		ttl:     ttl,
+		listTTL: ttl,
+		tabs:    make(map[string]*tabCacheEntry),
+		issues:  make(map[string]*issueCacheEntry),
+		now:     time.Now,
 	}
 }
 
 // SetClock replaces the cache's clock. Useful in tests.
 func (c *Cache) SetClock(now func() time.Time) { c.now = now }
 
-// TTL is how long cached data counts as fresh.
-func (c *Cache) TTL() time.Duration { return c.ttl }
+// ListTTL is how long a cached list counts as fresh.
+func (c *Cache) ListTTL() time.Duration { return c.listTTL }
 
 // FetchListCmd returns the tab's cached list if fresh (including a load
 // still in progress, which the caller resumes from Next), otherwise fetches
@@ -124,7 +135,7 @@ func (c *Cache) FetchListCmd(fetch PageFunc, tabIdx, gen int, tabName, jql strin
 		entry, cached := c.tabs[tabName]
 		c.mu.Unlock()
 
-		if cached && c.now().Sub(entry.fetchedAt) < c.ttl {
+		if cached && c.now().Sub(entry.fetchedAt) < c.listTTL {
 			return entry.msg(tabIdx, gen)
 		}
 

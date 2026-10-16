@@ -44,10 +44,10 @@ tabs with more than 100 issues.
 - **Every issue, without the wait** — a tab shows its first 100 issues at once
   and loads the rest in the background (up to `list.max_issues`, 1000 by
   default), with progress under the list.
-- **Smart caching** — per-tab and per-issue results are cached for 5 minutes,
-  so switching tabs is instant. Older lists stay on screen while they refresh
-  in the background (the visible tab refreshes itself once its data is 5
-  minutes old) and the new rows swap in with the cursor on the same issue; a
+- **Smart caching** — tab lists are cached for 30 minutes (issue details for
+  5), so switching tabs is instant. Older lists stay on screen while they
+  refresh in the background (the visible tab refreshes itself once its data is
+  30 minutes old) and the new rows swap in with the cursor on the same issue; a
   failed refresh keeps the old data, clearly flagged.
 - **Field discovery** — dump the field name-to-ID mapping for any issue to build
   custom columns and sidebars, including `customfield_*` fields.
@@ -233,7 +233,7 @@ Press `?` at any time for the context-sensitive keybindings overlay.
 The **title bar** at the top shows the Jira server and the signed-in user, how
 many issues the current tab holds with a colour-coded count per status, and on
 the right how fresh the data is and when it refreshes itself (`updated 2m ago
-· auto-refresh in 3m · r refresh`), the progress of a background refresh
+· auto-refresh in 28m · r refresh`), the progress of a background refresh
 (`refreshing 300 of 2000…`), or `refresh failed · data from 6m ago · r retry`
 when a refresh fails and older results are shown. On narrow
 terminals the less important parts give way first: the tagline, the user, the

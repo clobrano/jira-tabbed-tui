@@ -153,7 +153,7 @@ func (a App) freshness(tab tabState) []string {
 	case !tab.fetchedAt.IsZero():
 		updated := "updated " + ago(a.now().Sub(tab.fetchedAt)) + " ago"
 		auto := "auto-refresh soon"
-		if left := a.cache.TTL() - a.now().Sub(tab.fetchedAt); left >= time.Minute {
+		if left := a.cache.ListTTL() - a.now().Sub(tab.fetchedAt); left >= time.Minute {
 			auto = "auto-refresh in " + ago(left.Round(time.Minute))
 		} else if left > 0 {
 			auto = "auto-refresh in <1m"

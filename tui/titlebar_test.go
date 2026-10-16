@@ -33,7 +33,7 @@ func TestTitleBarWide(t *testing.T) {
 	if !strings.HasPrefix(got, want) {
 		t.Errorf("left side:\n got %q\nwant %q", got, want)
 	}
-	if !strings.HasSuffix(got, "updated 1m ago · auto-refresh in 4m · r refresh ") {
+	if !strings.HasSuffix(got, "updated 1m ago · auto-refresh in 29m · r refresh ") {
 		t.Errorf("right side: %q", got)
 	}
 	if w := lipgloss.Width(got); w != 200 {

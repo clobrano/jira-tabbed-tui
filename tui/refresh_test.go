@@ -97,7 +97,7 @@ func TestTabSwitchUsesFreshList(t *testing.T) {
 		t.Errorf("tab shows %d issues, want 250", n)
 	}
 	got := stripANSI(a.titleBar())
-	if !strings.HasSuffix(got, "updated 2m ago · auto-refresh in 3m · r refresh ") {
+	if !strings.HasSuffix(got, "updated 2m ago · auto-refresh in 28m · r refresh ") {
 		t.Errorf("title bar: %q", got)
 	}
 }
@@ -107,7 +107,7 @@ func TestStaleTabRefreshesInBackground(t *testing.T) {
 	a, advance := refreshTestApp(t, stub)
 	a = send(t, a, keyMsg("j"), keyMsg("j")) // cursor on P-3
 
-	advance(6 * time.Minute)
+	advance(31 * time.Minute)
 	stub.newTop = 2 // two issues created meanwhile, listed first
 	m, cmd := a.switchToTab(2)
 	a = m.(App)
@@ -181,7 +181,7 @@ func TestFailedRefreshKeepsRows(t *testing.T) {
 	if a = m.(App); a.tabs[1].refreshing || stub.calls != calls {
 		t.Errorf("auto-refresh retried a minute after failing")
 	}
-	advance(5 * time.Minute)
+	advance(30 * time.Minute)
 	m, _ = a.Update(autoRefreshMsg{})
 	if a = m.(App); !a.tabs[1].refreshing {
 		t.Errorf("auto-refresh did not retry after the TTL")
@@ -193,7 +193,7 @@ func TestAutoRefresh(t *testing.T) {
 	a, advance := refreshTestApp(t, stub)
 	calls := stub.calls
 
-	advance(4 * time.Minute)
+	advance(29 * time.Minute)
 	m, _ := a.Update(autoRefreshMsg{})
 	a = m.(App)
 	if a.tabs[1].refreshing || stub.calls != calls {

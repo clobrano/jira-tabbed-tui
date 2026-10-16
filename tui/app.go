@@ -1763,7 +1763,7 @@ func (a App) tabStale(i int) bool {
 	if t.triedAt.After(last) {
 		last = t.triedAt
 	}
-	return a.now().Sub(last) >= a.cache.TTL()
+	return a.now().Sub(last) >= a.cache.ListTTL()
 }
 
 // autoRefreshEvery is how often the visible tab is checked for staleness.
