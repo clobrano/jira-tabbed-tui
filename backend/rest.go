@@ -16,8 +16,28 @@ import (
 )
 
 type jiraCLIConfigFile struct {
-	Server string `yaml:"server"`
-	Login  string `yaml:"login"`
+	Server       string `yaml:"server"`
+	Login        string `yaml:"login"`
+	Installation string `yaml:"installation"` // "Cloud" (default) or "Local" (Server/Data Center)
+}
+
+// isJiraCloud reports whether the Jira server is Jira Cloud, from jira-cli's
+// installation setting (the same switch jira-cli itself uses); anything but
+// "Local" counts as Cloud, jira-cli's default.
+func isJiraCloud() bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return true
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".config", ".jira", ".config.yml"))
+	if err != nil {
+		return true
+	}
+	var f jiraCLIConfigFile
+	if yaml.Unmarshal(data, &f) != nil {
+		return true
+	}
+	return !strings.EqualFold(f.Installation, "local")
 }
 
 // resolveJiraServer returns the Jira base URL (with scheme, no trailing slash)

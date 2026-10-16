@@ -7,7 +7,8 @@ views you can fly through without ever touching the mouse. Define your tabs with
 JQL, browse issues in a compact table, drill into full detail, and run the
 common write actions — transition, assign, label, comment — right from the
 keyboard. It rides on top of the [`jira` CLI][jira-cli] for reads and writes and
-talks to the Jira REST API directly for the few things the CLI can't do.
+talks to the Jira REST API directly for what the CLI can't do — notably loading
+tabs with more than 100 issues.
 
 ![jira-tabbed-tui demo](demo/demo.gif)
 
@@ -40,9 +41,12 @@ talks to the Jira REST API directly for the few things the CLI can't do.
 - **Sorting** — reorder the current list by any column.
 - **ADF rendering** — Atlassian Document Format bodies (Jira Cloud) are rendered
   as readable, styled terminal text; plain-string bodies work too.
+- **Every issue, without the wait** — a tab shows its first 100 issues at once
+  and loads the rest in the background (up to `list.max_issues`, 1000 by
+  default), with progress under the list.
 - **Smart caching** — per-tab and per-issue results are cached with a 5-minute
-  TTL, paginated on demand, and fall back to stale data (clearly flagged) when a
-  refresh fails, so the UI stays responsive.
+  TTL and fall back to stale data (clearly flagged) when a refresh fails, so the
+  UI stays responsive.
 - **Field discovery** — dump the field name-to-ID mapping for any issue to build
   custom columns and sidebars, including `customfield_*` fields.
 - **Open in browser** — jump straight to any issue on the web.
@@ -108,9 +112,10 @@ actionable error rather than a blank screen.
 
 ## Authentication
 
-Reads and most writes go through the `jira` CLI, which manages its own
-authentication (`jira init` / `jira auth login`). A few operations call the Jira
-REST API directly and need an API token, resolved in this order:
+Issue details and most writes go through the `jira` CLI, which manages its own
+authentication (`jira init` / `jira auth login`). Tab lists and a few other
+operations call the Jira REST API directly and need an API token, resolved in
+this order:
 
 1. The **`JIRA_API_TOKEN`** environment variable.
 2. The **GNOME keyring** via `secret-tool` (looked up as service `jira-cli` with
@@ -119,6 +124,12 @@ REST API directly and need an API token, resolved in this order:
 The server URL and login email are read from the `jira` CLI's config
 (`~/.config/.jira/.config.yml`) and can be overridden with `backend.url` in your
 config.
+
+Tab lists are loaded with Jira's search API, asking only for the fields the
+columns show: `/rest/api/3/search/jql` on Jira Cloud and `/rest/api/2/search`
+on Server/Data Center (picked from jira-cli's `installation` setting). Without
+an API token the app falls back to the `jira` CLI, which returns at most 100
+issues per tab on Jira Cloud; the list then says so.
 
 > Generate an API token at
 > <https://id.atlassian.com/manage-profile/security/api-tokens>.
@@ -172,6 +183,7 @@ list:
     - field: type
     - field: summary
     - field: status
+  # max_issues: 1000   # stop loading a tab after this many issues (narrow the JQL for more)
 
 detail:
   sidebar_width: 33
@@ -324,9 +336,9 @@ sequence is used instead. The URL needs a Jira server, taken from
   the `fields` subcommand.
 - **`config/`** — loading, validating, and defaulting the YAML config.
 - **`backend/`** — everything that talks to Jira: a `Runner` that shells out to
-  the `jira` CLI, JSON/ADF parsers, direct REST calls (transitions, assignable
-  users, remote links), and a TTL cache that also handles pagination and
-  stale-data fallback.
+  the `jira` CLI, JSON/ADF parsers, direct REST calls (list search, transitions,
+  assignable users, remote links), and a TTL cache that also holds partially
+  loaded lists and falls back to stale data.
 - **`model/`** — the plain data types (issues, comments, links, transitions,
   users, fields) shared across the app.
 - **`tui/`** — the Bubble Tea views: tab bar, list, detail view with sidebar,

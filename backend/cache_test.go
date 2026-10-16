@@ -9,6 +9,14 @@ import (
 	"github.com/clobrano/jira-tabbed-tui/backend"
 )
 
+// cliPages fetches one 50-issue page through jira-cli, as the fixtures expect.
+func cliPages(r backend.Runner) backend.PageFunc {
+	return func(jql, cursor string) (backend.SearchPage, error) {
+		issues, total, err := backend.FetchIssueList(r, jql, 50)
+		return backend.SearchPage{Issues: issues, Total: total}, err
+	}
+}
+
 // runCmd executes a tea.Cmd synchronously and returns the resulting message.
 func runCmd(cmd tea.Cmd) tea.Msg {
 	if cmd == nil {
@@ -41,7 +49,7 @@ func TestCacheTTLNotExpired(t *testing.T) {
 	c := backend.NewCache()
 
 	// First fetch populates the cache.
-	msg1 := runCmd(c.FetchListCmd(r, 0, "tabA", "project = A"))
+	msg1 := runCmd(c.FetchListCmd(cliPages(r), 0, 0, "tabA", "project = A"))
 	lm1, ok := msg1.(backend.ListFetchedMsg)
 	if !ok {
 		t.Fatalf("expected ListFetchedMsg, got %T", msg1)
@@ -54,7 +62,7 @@ func TestCacheTTLNotExpired(t *testing.T) {
 	r2 := backend.NewFakeRunner() // empty runner — any call would fail
 
 	// Second fetch within TTL should return cached data, not call the runner.
-	msg2 := runCmd(c.FetchListCmd(r2, 0, "tabA", "project = A"))
+	msg2 := runCmd(c.FetchListCmd(cliPages(r2), 0, 0, "tabA", "project = A"))
 	lm2, ok := msg2.(backend.ListFetchedMsg)
 	if !ok {
 		t.Fatalf("expected ListFetchedMsg, got %T", msg2)
@@ -74,7 +82,7 @@ func TestCacheTTLExpired(t *testing.T) {
 	c := backend.NewCacheWithTTL(1 * time.Millisecond)
 
 	// Populate cache.
-	runCmd(c.FetchListCmd(r, 0, "tabB", "project = B"))
+	runCmd(c.FetchListCmd(cliPages(r), 0, 0, "tabB", "project = B"))
 
 	// Wait for TTL to expire.
 	time.Sleep(5 * time.Millisecond)
@@ -83,7 +91,7 @@ func TestCacheTTLExpired(t *testing.T) {
 	rFail := backend.NewFakeRunner()
 	rFail.RegisterError(errors.New("network gone"), "issue", "list", "--raw", "-q", "project = B", "--paginate", "0:50")
 
-	msg := runCmd(c.FetchListCmd(rFail, 0, "tabB", "project = B"))
+	msg := runCmd(c.FetchListCmd(cliPages(rFail), 0, 0, "tabB", "project = B"))
 	lm, ok := msg.(backend.ListFetchedMsg)
 	if !ok {
 		t.Fatalf("expected ListFetchedMsg, got %T", msg)
@@ -104,7 +112,7 @@ func TestCacheInvalidate(t *testing.T) {
 	c := backend.NewCache()
 
 	// Populate tab and issue caches.
-	runCmd(c.FetchListCmd(r, 0, "tabC", "project = C"))
+	runCmd(c.FetchListCmd(cliPages(r), 0, 0, "tabC", "project = C"))
 	runCmd(c.FetchDetailCmd(r, "PROJ-123"))
 
 	// Invalidate both.
@@ -112,7 +120,7 @@ func TestCacheInvalidate(t *testing.T) {
 
 	// After invalidation, an empty runner should cause a fetch attempt (which fails).
 	rEmpty := backend.NewFakeRunner()
-	msg := runCmd(c.FetchListCmd(rEmpty, 0, "tabC", "project = C"))
+	msg := runCmd(c.FetchListCmd(cliPages(rEmpty), 0, 0, "tabC", "project = C"))
 	lm := msg.(backend.ListFetchedMsg)
 	if lm.Err == nil {
 		t.Error("expected fetch to be attempted after invalidation")
@@ -132,13 +140,13 @@ func TestCacheForceRefreshBypassesTTL(t *testing.T) {
 	c := backend.NewCache()
 
 	// Populate cache.
-	runCmd(c.FetchListCmd(r, 0, "tabD", "project = D"))
+	runCmd(c.FetchListCmd(cliPages(r), 0, 0, "tabD", "project = D"))
 
 	// Force refresh should bypass TTL and attempt a real fetch.
 	rFail := backend.NewFakeRunner()
 	rFail.RegisterError(errors.New("forced fail"), "issue", "list", "--raw", "-q", "project = D", "--paginate", "0:50")
 
-	msg := runCmd(c.ForceFetchListCmd(rFail, 0, "tabD", "project = D"))
+	msg := runCmd(c.ForceFetchListCmd(cliPages(rFail), 0, 0, "tabD", "project = D"))
 	lm := msg.(backend.ListFetchedMsg)
 	if lm.Err == nil {
 		t.Fatal("expected error from forced fetch, got nil — TTL was not bypassed")

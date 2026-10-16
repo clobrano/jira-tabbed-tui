@@ -31,6 +31,9 @@ type ListColumn struct {
 
 type List struct {
 	Columns []ListColumn `yaml:"columns"`
+	// MaxIssues caps how many issues a tab loads (default 1000), so a very
+	// broad query can't load forever; narrow the JQL to see the rest.
+	MaxIssues int `yaml:"max_issues"`
 }
 
 type SidebarField struct {
@@ -181,6 +184,9 @@ func (c *Config) applyDefaults() {
 			{Field: "summary"},
 			{Field: "status"},
 		}
+	}
+	if c.List.MaxIssues <= 0 {
+		c.List.MaxIssues = 1000
 	}
 	if c.Detail.SidebarWidth == 0 {
 		c.Detail.SidebarWidth = 33

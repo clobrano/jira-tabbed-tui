@@ -11,14 +11,18 @@ import (
 
 const defaultTTL = 5 * time.Minute
 
-// ListFetchedMsg is sent when a tab list fetch completes.
+// ListFetchedMsg is sent when a page of a tab's list arrives. Issues holds
+// everything loaded so far; while Next is set, more pages remain.
 type ListFetchedMsg struct {
-	TabIdx int
-	Issues []model.Issue
-	Total  int
-	Err    error
-	Stale  bool      // true when returning stale cached data because the fetch failed
-	At     time.Time // when the returned issues were fetched from Jira
+	TabIdx    int
+	Gen       int // load generation; replies to a superseded load are ignored
+	Issues    []model.Issue
+	Total     int    // matching issues, if known (0 = unknown)
+	Next      string // cursor of the next page ("" = nothing more to load)
+	Truncated bool   // jira-cli fallback returned a full page; more may exist
+	Err       error
+	Stale     bool      // true when returning stale cached data because the fetch failed
+	At        time.Time // when the returned issues were fetched from Jira
 }
 
 // DetailFetchedMsg is sent when an issue detail fetch completes.
@@ -64,7 +68,16 @@ type WriteActionDoneMsg struct {
 type tabCacheEntry struct {
 	issues    []model.Issue
 	total     int
+	next      string // cursor of the next page to load ("" = complete)
+	truncated bool
 	fetchedAt time.Time
+}
+
+func (e *tabCacheEntry) msg(tabIdx, gen int) ListFetchedMsg {
+	return ListFetchedMsg{
+		TabIdx: tabIdx, Gen: gen, Issues: e.issues, Total: e.total,
+		Next: e.next, Truncated: e.truncated, At: e.fetchedAt,
+	}
 }
 
 type issueCacheEntry struct {
@@ -94,77 +107,90 @@ func NewCacheWithTTL(ttl time.Duration) *Cache {
 	}
 }
 
-// FetchListCmd returns a Cmd that returns cached data if fresh, otherwise fetches.
-func (c *Cache) FetchListCmd(r Runner, tabIdx int, tabName, jql string) tea.Cmd {
+// FetchListCmd returns the tab's cached list if fresh (including a load
+// still in progress, which the caller resumes from Next), otherwise fetches
+// the first page.
+func (c *Cache) FetchListCmd(fetch PageFunc, tabIdx, gen int, tabName, jql string) tea.Cmd {
 	return func() tea.Msg {
 		c.mu.Lock()
 		entry, cached := c.tabs[tabName]
 		c.mu.Unlock()
 
 		if cached && time.Since(entry.fetchedAt) < c.ttl {
-			return ListFetchedMsg{TabIdx: tabIdx, Issues: entry.issues, Total: entry.total, At: entry.fetchedAt}
+			return entry.msg(tabIdx, gen)
 		}
 
-		return c.doFetch(r, tabIdx, tabName, jql)
+		return c.doFetch(fetch, tabIdx, gen, tabName, jql)
 	}
 }
 
-// ForceFetchListCmd bypasses the TTL and always fetches fresh data.
-func (c *Cache) ForceFetchListCmd(r Runner, tabIdx int, tabName, jql string) tea.Cmd {
+// ForceFetchListCmd bypasses the TTL and always fetches the first page.
+func (c *Cache) ForceFetchListCmd(fetch PageFunc, tabIdx, gen int, tabName, jql string) tea.Cmd {
 	return func() tea.Msg {
-		return c.doFetch(r, tabIdx, tabName, jql)
+		return c.doFetch(fetch, tabIdx, gen, tabName, jql)
 	}
 }
 
-func (c *Cache) doFetch(r Runner, tabIdx int, tabName, jql string) tea.Msg {
-	issues, total, err := FetchIssueList(r, jql, 50)
+func (c *Cache) doFetch(fetch PageFunc, tabIdx, gen int, tabName, jql string) tea.Msg {
+	page, err := fetch(jql, "")
 	if err != nil {
 		c.mu.Lock()
 		entry, cached := c.tabs[tabName]
 		c.mu.Unlock()
 		if cached {
-			return ListFetchedMsg{
-				TabIdx: tabIdx, Issues: entry.issues,
-				Total: entry.total, Err: err, Stale: true, At: entry.fetchedAt,
-			}
+			msg := entry.msg(tabIdx, gen)
+			msg.Next, msg.Err, msg.Stale = "", err, true
+			return msg
 		}
-		return ListFetchedMsg{TabIdx: tabIdx, Err: err}
+		return ListFetchedMsg{TabIdx: tabIdx, Gen: gen, Err: err}
 	}
 
-	now := time.Now()
+	entry := &tabCacheEntry{
+		issues: page.Issues, total: page.Total, next: page.Next,
+		truncated: page.Truncated, fetchedAt: time.Now(),
+	}
+	if entry.next == "" {
+		entry.total = len(entry.issues)
+	}
 	c.mu.Lock()
-	c.tabs[tabName] = &tabCacheEntry{issues: issues, total: total, fetchedAt: now}
+	c.tabs[tabName] = entry
 	c.mu.Unlock()
-
-	return ListFetchedMsg{TabIdx: tabIdx, Issues: issues, Total: total, At: now}
+	return entry.msg(tabIdx, gen)
 }
 
-// FetchListPageCmd appends the next page of results to the tab cache.
-func (c *Cache) FetchListPageCmd(r Runner, tabIdx int, tabName, jql string, startAt int) tea.Cmd {
+// FetchNextPageCmd loads the page at cursor and appends it to the tab's
+// cached list. If the cache has moved on (another load already fetched that
+// page, or a refresh replaced the list), it returns the cache as it is, so
+// the caller carries on from its Next. A failed page keeps what was loaded
+// and stops there.
+func (c *Cache) FetchNextPageCmd(fetch PageFunc, tabIdx, gen int, tabName, jql, cursor string) tea.Cmd {
 	return func() tea.Msg {
-		issues, total, err := FetchIssueListPage(r, jql, 50, startAt)
-		if err != nil {
-			return ListFetchedMsg{TabIdx: tabIdx, Err: err}
-		}
+		page, err := fetch(jql, cursor)
 
 		c.mu.Lock()
-		existing := c.tabs[tabName]
-		at := time.Now()
-		if existing != nil {
-			combined := append(existing.issues, issues...)
-			at = existing.fetchedAt
-			c.tabs[tabName] = &tabCacheEntry{
-				issues: combined, total: total, fetchedAt: at,
-			}
-			issues = combined
-		} else {
-			c.tabs[tabName] = &tabCacheEntry{
-				issues: issues, total: total, fetchedAt: at,
-			}
+		defer c.mu.Unlock()
+		entry, ok := c.tabs[tabName]
+		if !ok {
+			return nil
 		}
-		c.mu.Unlock()
-
-		return ListFetchedMsg{TabIdx: tabIdx, Issues: issues, Total: total, At: at}
+		if entry.next != cursor {
+			return entry.msg(tabIdx, gen)
+		}
+		if err != nil {
+			msg := entry.msg(tabIdx, gen)
+			msg.Next, msg.Err = "", err
+			return msg
+		}
+		entry.issues = append(append([]model.Issue(nil), entry.issues...), page.Issues...)
+		entry.next = page.Next
+		if page.Total > 0 {
+			entry.total = page.Total
+		}
+		// Once complete the count is exact; Cloud's total is an estimate.
+		if entry.next == "" || entry.total < len(entry.issues) {
+			entry.total = len(entry.issues)
+		}
+		return entry.msg(tabIdx, gen)
 	}
 }
 

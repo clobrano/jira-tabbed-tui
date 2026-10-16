@@ -88,7 +88,7 @@ func TestActionBoundToLKeepsIt(t *testing.T) {
 func TestVimTopBottom(t *testing.T) {
 	a := newTestApp(t)
 	issues := []model.Issue{{Key: "P-1"}, {Key: "P-2"}, {Key: "P-3"}}
-	a = send(t, a, backend.ListFetchedMsg{TabIdx: 1, Issues: issues, Total: 3})
+	a = send(t, a, backend.ListFetchedMsg{TabIdx: 1, Gen: a.tabs[1].loadGen, Issues: issues, Total: 3})
 	cursor := func() string { iss, _ := a.tabs[1].list.SelectedIssue(); return iss.Key }
 
 	a = send(t, a, keyMsg("G"))

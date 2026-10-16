@@ -85,7 +85,9 @@ type IssueList struct {
 	sortAsc      bool
 	total        int
 	loading      bool
-	loadingMore  bool
+	loadingMore  bool // more pages are loading in the background
+	capped       bool // stopped at list.max_issues; more exist in Jira
+	truncated    bool // jira-cli fallback: a full page, more may exist
 	err          error
 	stale        bool
 	cursor       int
@@ -163,8 +165,11 @@ func (l IssueList) SetLoading(v bool) IssueList {
 	return l
 }
 
-func (l IssueList) SetLoadingMore(v bool) IssueList {
-	l.loadingMore = v
+// SetPaging records how the loaded rows relate to the full result: more
+// pages still loading, stopped at the max_issues cap, or a full jira-cli
+// page that may be missing the rest.
+func (l IssueList) SetPaging(loadingMore, capped, truncated bool) IssueList {
+	l.loadingMore, l.capped, l.truncated = loadingMore, capped, truncated
 	return l
 }
 
@@ -252,14 +257,6 @@ func (l IssueList) SelectedIssue() (model.Issue, bool) {
 func (l IssueList) AtBottom() bool {
 	return len(l.issues) > 0 && l.cursor == len(l.issues)-1
 }
-
-// HasMore returns true when there are more items on the server than loaded.
-func (l IssueList) HasMore() bool {
-	return l.total > len(l.allIssues)
-}
-
-// LoadedCount returns the number of issues fetched from the server (unfiltered).
-func (l IssueList) LoadedCount() int { return len(l.allIssues) }
 
 // IsFilterActive reports whether the filter input bar is visible.
 func (l IssueList) IsFilterActive() bool { return l.filterActive }
@@ -552,9 +549,9 @@ func (l IssueList) View() string {
 	return sb.String()
 }
 
-// positionLine says where the cursor is and what lies outside the visible
-// rows, e.g. "row 31 of 50 · ↑ 20 above · ↓ 19 below · 70 more in Jira (j at
-// the bottom loads them)".
+// positionLine says where the cursor is, what lies outside the visible rows
+// and how loading is going, e.g. "row 31 of 300 · ↑ 20 above · ↓ 249 below ·
+// loading 300 of 480…".
 func (l IssueList) positionLine() string {
 	n := len(l.issues)
 	parts := []string{fmt.Sprintf("row %d of %d", l.cursor+1, n)}
@@ -564,11 +561,18 @@ func (l IssueList) positionLine() string {
 	if below := n - (l.offset + l.visibleRows()); below > 0 {
 		parts = append(parts, fmt.Sprintf("↓ %d below", below))
 	}
+	loaded := len(l.allIssues)
 	switch {
+	case l.loadingMore && l.total > loaded:
+		parts = append(parts, fmt.Sprintf("loading %d of %d…", loaded, l.total))
 	case l.loadingMore:
-		parts = append(parts, "loading more…")
-	case l.HasMore():
-		parts = append(parts, fmt.Sprintf("%d more in Jira (j at the bottom loads them)", l.total-len(l.allIssues)))
+		parts = append(parts, fmt.Sprintf("loading %d…", loaded))
+	case l.capped && l.total > loaded:
+		parts = append(parts, fmt.Sprintf("showing first %d of %d — narrow the JQL to see the rest", loaded, l.total))
+	case l.capped:
+		parts = append(parts, fmt.Sprintf("showing first %d — narrow the JQL to see the rest", loaded))
+	case l.truncated:
+		parts = append(parts, fmt.Sprintf("first %d shown — set JIRA_API_TOKEN to load them all", loaded))
 	}
 	return strings.Join(parts, " · ")
 }
