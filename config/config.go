@@ -216,7 +216,7 @@ func (c *Config) applyDefaults() {
 		kb.OpenBrowser = "o"
 	}
 	if kb.FieldDiscover == "" {
-		kb.FieldDiscover = "F"
+		kb.FieldDiscover = "ctrl+f"
 	}
 	if kb.ForceRefresh == "" {
 		kb.ForceRefresh = "r"

@@ -182,3 +182,20 @@ func TestRefreshInDetailViewReloadsIssueInPlace(t *testing.T) {
 		t.Errorf("status line = %q (error=%v)", a.statusLine.message, a.statusLine.isError)
 	}
 }
+
+// ctrl+f lists the issue's fields, as ctrl+e then edits one of them; plain F
+// no longer does.
+func TestFieldDiscoveryKey(t *testing.T) {
+	a := newTestApp(t)
+	a.view = viewDetail
+	a = a.pushHistory("P-1")
+	a = send(t, a, fetched("P-1"))
+	if _, cmd := a.Update(keyMsg("F")); cmd != nil {
+		if _, ok := cmd().(FieldsOverlayMsg); ok {
+			t.Error("F still lists the fields")
+		}
+	}
+	if _, cmd := a.Update(tea.KeyMsg{Type: tea.KeyCtrlF}); cmd == nil {
+		t.Error("ctrl+f does not list the fields")
+	}
+}
