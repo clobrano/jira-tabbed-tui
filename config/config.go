@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -47,17 +49,17 @@ type Detail struct {
 }
 
 type Keybindings struct {
-	Transition    string `yaml:"transition"`
-	AddLabels     string `yaml:"add_labels"`
-	AddComment    string `yaml:"add_comment"`
-	Assign        string `yaml:"assign"`
-	OpenBrowser   string `yaml:"open_browser"`
-	FieldDiscover string `yaml:"field_discovery"`
-	ForceRefresh  string `yaml:"force_refresh"`
-	Help          string `yaml:"help"`
-	Sort          string `yaml:"sort"`     // list-view sort picker (list view only; 's' also defaults transition in detail view)
-	Copy          string `yaml:"copy"`     // pick fields/URL to copy to the clipboard
-	EditJQL       string `yaml:"edit_jql"` // edit the tab's JQL; on the Search tab, type a query
+	Transition    string `yaml:"transition,omitempty"`
+	AddLabels     string `yaml:"add_labels,omitempty"`
+	AddComment    string `yaml:"add_comment,omitempty"`
+	Assign        string `yaml:"assign,omitempty"`
+	OpenBrowser   string `yaml:"open_browser,omitempty"`
+	FieldDiscover string `yaml:"field_discovery,omitempty"`
+	ForceRefresh  string `yaml:"force_refresh,omitempty"`
+	Help          string `yaml:"help,omitempty"`
+	Sort          string `yaml:"sort,omitempty"`     // list-view sort picker (list view only; 's' also defaults transition in detail view)
+	Copy          string `yaml:"copy,omitempty"`     // pick fields/URL to copy to the clipboard
+	EditJQL       string `yaml:"edit_jql,omitempty"` // edit the tab's JQL; on the Search tab, type a query
 }
 
 type Config struct {
@@ -65,11 +67,14 @@ type Config struct {
 	Tabs        []Tab       `yaml:"tabs"`
 	List        List        `yaml:"list"`
 	Detail      Detail      `yaml:"detail"`
-	Keybindings Keybindings `yaml:"keybindings"`
+	Keybindings Keybindings `yaml:"keybindings,omitempty"`
 }
 
-// Save writes cfg back to path in YAML format.
+// Save writes cfg back to path in YAML format. Keybindings are written only
+// where they differ from the defaults, so a later change of default reaches
+// configs the app has saved.
 func Save(path string, cfg Config) error {
+	cfg.Keybindings = cfg.Keybindings.withoutDefaults()
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
@@ -164,6 +169,7 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("parsing config: %w", err)
 	}
 
+	cfg.Keybindings.migrateRetiredDefaults()
 	cfg.applyDefaults()
 
 	if err := cfg.validate(); err != nil {
@@ -233,6 +239,54 @@ func (c *Config) applyDefaults() {
 	if kb.EditJQL == "" {
 		kb.EditJQL = "e"
 	}
+}
+
+// retiredDefaults maps keybindings (by YAML name) from an old default key to
+// its current one. Releases before Save skipped defaults wrote every key into
+// the config, so a value equal to an old default most likely came from there
+// rather than from the user, and now clashes or misleads:
+//
+//	transition s → m        (s is the sort picker)
+//	add_labels l → L        (l moves right, like vim)
+//	field_discovery F → ctrl+f  (matches ctrl+e, which edits a field)
+var retiredDefaults = map[string][2]string{
+	"transition":      {"s", "m"},
+	"add_labels":      {"l", "L"},
+	"field_discovery": {"F", "ctrl+f"},
+}
+
+// keyFields returns kb's keybindings by YAML name.
+func (kb *Keybindings) keyFields() map[string]*string {
+	fields := map[string]*string{}
+	v := reflect.ValueOf(kb).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		name, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("yaml"), ",")
+		fields[name] = v.Field(i).Addr().Interface().(*string)
+	}
+	return fields
+}
+
+// migrateRetiredDefaults moves keys still set to a retired default to the
+// current one.
+func (kb *Keybindings) migrateRetiredDefaults() {
+	for name, key := range kb.keyFields() {
+		if r, ok := retiredDefaults[name]; ok && *key == r[0] {
+			*key = r[1]
+		}
+	}
+}
+
+// withoutDefaults blanks every keybinding equal to its default.
+func (kb Keybindings) withoutDefaults() Keybindings {
+	var def Config
+	def.applyDefaults()
+	defaults := def.Keybindings.keyFields()
+	for name, key := range kb.keyFields() {
+		if *key == *defaults[name] {
+			*key = ""
+		}
+	}
+	return kb
 }
 
 func (c *Config) validate() error {

@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/clobrano/jira-tabbed-tui/config"
@@ -160,4 +161,59 @@ func TestDefaultPath(t *testing.T) {
 			t.Errorf("DefaultPath() = %q, want %q", got, newPath(home))
 		}
 	})
+}
+
+// A config the app saved before keybindings were written only when changed
+// holds every old default; the retired ones move to the current keys.
+func TestLoadMigratesRetiredDefaultKeys(t *testing.T) {
+	path := writeTempConfig(t, `
+tabs:
+  - name: Work
+    jql: project = PROJ
+keybindings:
+  transition: s
+  add_labels: l
+  field_discovery: F
+  assign: A
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb := cfg.Keybindings
+	if kb.Transition != "m" || kb.AddLabels != "L" || kb.FieldDiscover != "ctrl+f" {
+		t.Errorf("retired defaults kept: transition %q, add_labels %q, field_discovery %q",
+			kb.Transition, kb.AddLabels, kb.FieldDiscover)
+	}
+	if kb.Assign != "A" {
+		t.Errorf("custom assign key = %q, want A", kb.Assign)
+	}
+}
+
+// Save writes only the keybindings that differ from the defaults.
+func TestSaveSkipsDefaultKeys(t *testing.T) {
+	path := writeTempConfig(t, "tabs:\n  - name: Work\n    jql: project = PROJ\nkeybindings:\n  assign: A\n")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "assign: A") {
+		t.Errorf("custom key not saved:\n%s", data)
+	}
+	for _, def := range []string{"field_discovery", "transition", "help"} {
+		if strings.Contains(string(data), def) {
+			t.Errorf("default %s written to the config:\n%s", def, data)
+		}
+	}
+	again, err := config.Load(path)
+	if err != nil || again.Keybindings != cfg.Keybindings {
+		t.Errorf("reloaded keybindings %+v, want %+v (err %v)", again.Keybindings, cfg.Keybindings, err)
+	}
 }

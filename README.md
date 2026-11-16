@@ -211,6 +211,12 @@ keybindings:
   edit_jql: e          # edit the tab's JQL (Search tab: type a query)
 ```
 
+When the app saves the config (adding or removing a tab), it writes only the
+keybindings you changed, so new defaults reach you. Configs saved by older
+releases listed every key; there, the retired defaults `transition: s`,
+`add_labels: l` and `field_discovery: F` are read as today's `m`, `L` and
+`ctrl+f`.
+
 ### Custom fields in the sidebar
 
 The sidebar accepts any Jira field name — built-ins like `assignee`, `reporter`,
