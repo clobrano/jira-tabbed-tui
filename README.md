@@ -203,7 +203,7 @@ keybindings:
   add_comment: c       # add a comment
   assign: a            # assign the issue
   open_browser: o      # open in browser
-  field_discovery: F   # list all fields for the selected issue
+  field_discovery: ctrl+f  # list all fields; ctrl+e edits the highlighted one
   force_refresh: r     # refresh the current tab
   help: "?"            # toggle the help overlay
   sort: s              # open the sort picker (list view)
@@ -287,7 +287,7 @@ browser), refresh and quit are listed under `?`.
 | `c`              | Add a comment                                            |
 | `Y`              | Copy issue fields / URL                                  |
 | `r`              | Refresh the issue (and its links) from Jira               |
-| `F`              | List all fields for the issue                            |
+| `Ctrl+f`         | List all fields for the issue                            |
 | `Ctrl+e`         | Edit the highlighted field (in the Fields overlay)       |
 
 *(Action keys reflect the defaults; they follow whatever you set under

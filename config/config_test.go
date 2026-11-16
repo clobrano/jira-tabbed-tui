@@ -115,6 +115,9 @@ tabs:
 	if cfg.Keybindings.Transition != "m" {
 		t.Errorf("expected default transition key=m, got %q", cfg.Keybindings.Transition)
 	}
+	if cfg.Keybindings.FieldDiscover != "ctrl+f" {
+		t.Errorf("expected default field_discovery key=ctrl+f, got %q", cfg.Keybindings.FieldDiscover)
+	}
 	if cfg.Keybindings.Help != "?" {
 		t.Errorf("expected default help key=?, got %q", cfg.Keybindings.Help)
 	}
